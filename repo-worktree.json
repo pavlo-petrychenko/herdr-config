@@ -1,0 +1,31 @@
+{
+  "// how": [
+    "Worktrees popup (cmd-shift-n), mods/repo-worktree: list, open, create (in the background), remove (Tab marks, Enter).",
+    "Every repo works. A repo with no entry uses strategy \"git\": git worktree add into ~/.herdr/worktrees/<repo>/<name>.",
+    "\"defaults\": options for every repo (an entry overrides them). Strategies: mods/repo-worktree/strategies/.",
+    "Removal is full by default: containers, folder, branch (\"remove\": { \"docker\": false, \"deleteBranch\": false } to keep them)."
+  ],
+  "defaults": {
+    "agent": [
+      "claude"
+    ]
+  },
+  "repos": {
+    "~/Desktop/project/website": {
+      "strategy": "command",
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name",
+          "placeholder": "worktree name (also the branch)",
+          "required": true,
+          "type": "branch"
+        }
+      ],
+      "path": "{repo.parent}/website-{name:slug}",
+      "run": "make worktree branch={name} folder={name:slug} services='frontend frontend-landings content-editor mobile kodree-mobile serverless e2e' base=master",
+      "nonZeroExit": "warn-if-created",
+      "after": "if [ -d .husky ] && [ ! -d .husky/_ ]; then npx husky >/dev/null 2>&1 || true; fi"
+    }
+  }
+}

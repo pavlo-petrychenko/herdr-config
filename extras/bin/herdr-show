@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+// Show files to the person in Herdr: a read-only viewer pane beside this agent's terminal.
+//
+//   herdr-show <file[:from[-to]]>... [--note "why"]   open (or add tabs to) this agent's viewer
+//   herdr-show --close                                close this agent's viewer
+//
+// Paths are relative to the current folder. `src/a.ts:40-80` marks lines 40-80 and scrolls
+// to them; `notes.md` renders markdown. Showing a file again updates its tab.
+// The viewer is the `file-viewer` mod; its state is <appHome>/data/file-viewer/<terminal>.json.
+// Focus stays on the agent's terminal.
+
+const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const usage = 'usage: herdr-show <file[:from[-to]]>... [--note "why"] | herdr-show --close';
+const fail = (msg) => { process.stderr.write(`herdr-show: ${msg}\n`); process.exit(1); };
+
+function herdr(args) {
+  try {
+    return JSON.parse(execFileSync("herdr-app", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) || "null");
+  } catch (e) {
+    try { return JSON.parse(e.stdout); } catch { return { error: String(e.stderr || e.message).trim() }; }
+  }
+}
+
+(async () => {
+  const appHome = process.env.HERDR_APP_HOME || path.join(os.homedir(), ".config/herdr-app");
+  const lib = await import(path.join(appHome, "mods/file-viewer/state.js"));
+  const args = process.argv.slice(2);
+  if (!args.length || args.includes("-h") || args.includes("--help")) { console.log(usage); process.exit(args.length ? 0 : 1); }
+
+  const terminal = process.env.HC_TERMINAL_ID;
+  if (!terminal) fail("not inside a Herdr terminal (HC_TERMINAL_ID is not set).");
+  const file = lib.stateFile(appHome, terminal);
+  const read = () => lib.parseState(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null);
+  const write = (s) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, JSON.stringify(s, null, 2)); fs.renameSync(`${file}.tmp`, file); };
+
+  // This agent's pane: the viewer opens to its right, and focus comes back to it.
+  const ls = herdr(["ls"]);
+  if (!ls?.spaces) fail(`Herdr does not answer: ${ls?.error ?? "no window"}`);
+  const mine = ls.spaces.flatMap((s) => s.tabs.flatMap((t) => t.terminals)).find((x) => x.terminal === terminal);
+  if (!mine?.pane) fail(`terminal ${terminal} has no pane in this Herdr window.`);
+  // A viewer is open when its pane takes focus; then focus goes back to the agent.
+  const alive = (pane) => Boolean(pane) && !herdr(["do", "pane.focus", "--pane", pane])?.error;
+  const back = () => herdr(["do", "pane.focus", "--pane", mine.pane]);
+
+  if (args[0] === "--close") {
+    const s = read();
+    if (s.pane && alive(s.pane)) { herdr(["do", "pane.close", "--pane", s.pane]); back(); }
+    write({ ...s, tabs: [], active: null, pane: null, seq: s.seq + 1 });
+    console.log("closed");
+    return;
+  }
+
+  let note = null;
+  const specs = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--note") note = args[++i] ?? null;
+    else if (args[i].startsWith("--note=")) note = args[i].slice(7);
+    else if (args[i].startsWith("--")) fail(`unknown option ${args[i]}\n${usage}`);
+    else specs.push(lib.parseSpec(args[i], process.cwd()));
+  }
+  if (!specs.length) fail(usage);
+  for (const s of specs) {
+    let st;
+    try { st = fs.statSync(s.path); } catch { fail(`no such file: ${s.path}`); }
+    if (!st.isFile()) fail(`not a file: ${s.path}`);
+  }
+
+  let state = read();
+  // The note goes with the first file; the first file ends up in front.
+  for (const [i, s] of [...specs].reverse().entries()) state = lib.addTab(state, { ...s, note: i === specs.length - 1 ? note : null });
+  const open = alive(state.pane);
+  if (!open) state = { ...state, pane: null };
+  write(state);
+  if (!open) {
+    const r = herdr(["do", "pane.split", "--direction", "right", "--pane", mine.pane, "--mod", "file-viewer", "--props", JSON.stringify({ terminal, state: file })]);
+    if (!r?.pane) fail(`could not open the viewer: ${r?.error ?? JSON.stringify(r)}`);
+    write({ ...read(), pane: r.pane });
+  }
+  back();
+  console.log(`showing ${specs.map((s) => path.relative(process.cwd(), s.path) + (s.from ? `:${s.from}${s.to ? `-${s.to}` : ""}` : "")).join(", ")}`);
+})().catch((e) => fail(e?.stack ?? String(e)));

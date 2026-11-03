@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node "$HOME/.claude/hooks/herdr-status.mjs" "$@"

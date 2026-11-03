@@ -1,0 +1,13 @@
+{
+  "// how": [
+    "Groups in the Spaces sidebar. A space goes to the first group whose folder pattern",
+    "matches where it is (its first terminal's folder). `~/x/**`: x and everything under it;",
+    "`~/x/*`: x's direct subfolders; anything else: that folder only.",
+    "Folders you make with a space's right-click menu come after these; a space you move",
+    "there stays there, whatever the rules say. Spaces that match nothing go to Other."
+  ],
+  "groups": [
+    { "name": "Work", "folders": ["~/Desktop/project/**"] },
+    { "name": "Personal", "folders": ["~/Documents/personal/**"] }
+  ]
+}

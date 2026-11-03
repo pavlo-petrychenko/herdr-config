@@ -1,0 +1,31 @@
+# Allowlist: Herdr's home also holds shipped files and runtime state.
+/*
+!/.gitignore
+!/README.md
+!/install.sh
+!/extras/
+!/keys.json
+!/settings.json
+!/repo-worktree.json
+!/space-groups.json
+!/spaces-flat-patch.py
+!/spaces-flat-sync.sh
+
+!/layouts/
+/layouts/*
+!/layouts/main-flat.json
+
+!/mods/
+/mods/*
+!/mods/acp-probe/
+!/mods/agent-queue/
+!/mods/agent-usage/
+!/mods/file-viewer/
+!/mods/repo-worktree/
+!/mods/space-groups/
+!/mods/spaces-flat/
+
+# Written by Herdr into each mod.
+**/gpui-kit.d.ts
+**/herdr.d.ts
+.DS_Store
