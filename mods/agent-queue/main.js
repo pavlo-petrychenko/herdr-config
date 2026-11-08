@@ -54,7 +54,10 @@ const view = () => {
 const DIR = () => `${appHome()}/data/agent-status`;
 const DUMP = 'mkdir -p "$1" && cd "$1" && for f in *.json; do [ -e "$f" ] && printf "%s\\t%s\\n" "$f" "$(tr -d "\\n" < "$f")"; done; true';
 
-const ROW = 52;
+const ROW = 52; // the popup row: at least this high, taller when its text wraps
+const LINE = 17; // line heights in the sidebar rows: title, description
+const NOTE = 15;
+const POP = 18; // the popup's title line
 const LABEL = { approve: "Approve", answer: "Answer", blocked: "Blocked", review: "Review", done: "Done", waiting: "Waiting" };
 
 export default class AgentQueue extends View {
@@ -197,45 +200,51 @@ export default class AgentQueue extends View {
       .child(chip.label);
   }
 
-  // The popup's row.
+  // The popup's row: at least ROW high, taller when the title or the description wraps (nothing is cut).
   row(t, item, i) {
     const on = i === this.at;
     const asks = item.section === "queue";
-    return h_flex().id(`agent-${item.address}`).h(ROW).flex_none().px(10).gap(10).items_center().rounded(8).cursor_pointer()
+    const top = (box) => h_flex().h(POP).flex_none().items_center().child(box);
+    return h_flex().id(`agent-${item.address}`).min_h(ROW).flex_none().px(10).py(8).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .on_mouse_move((_e, cx) => { if (this.at !== i) { this.at = i; cx.notify(); } })
       .on_click(() => this.go(item))
-      .child(h_flex().w(14).flex_none().justify_center().child(this.mark(t, item)))
-      .child(this.logo(t, item.program))
+      .child(h_flex().w(14).h(POP).flex_none().items_center().justify_center().child(this.mark(t, item)))
+      .child(top(this.logo(t, item.program)))
       .child(v_flex().flex_1().min_w(0).gap(2)
-        .child(h_flex().gap(8).items_center().min_w(0)
-          .child(div().min_w(0).truncate().text_color(t.foreground).font_semibold().child(item.task))
-          .child(div().flex_none().px(6).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(item.space))
-          .when(item.helpers > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`+${item.helpers} helper${item.helpers === 1 ? "" : "s"}`)))
-          .children([this.planChip(t, item)].filter(Boolean)))
-        .child(h_flex().gap(6).min_w(0).text_size(11.5)
-          .children([this.chip(t, item.kind)].filter(Boolean))
-          .child(div().min_w(0).truncate().text_color(asks ? t.foreground : t.muted).child(item.why || " "))))
+        .child(h_flex().gap(8).items_start().min_w(0)
+          .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${POP}px`).text_color(t.foreground).font_semibold().child(item.task))
+          .child(top(div().px(6).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(item.space)))
+          .when(item.helpers > 0, (el) => el.child(top(div().text_size(11).text_color(t.dim).child(`+${item.helpers} helper${item.helpers === 1 ? "" : "s"}`))))
+          .children([this.planChip(t, item)].filter(Boolean).map(top)))
+        .child(h_flex().gap(6).min_w(0).items_start().text_size(11.5)
+          .children([this.chip(t, item.kind)].filter(Boolean).map((c) => h_flex().h(NOTE + 1).flex_none().items_center().child(c)))
+          .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${NOTE + 1}px`).text_color(asks ? t.foreground : t.muted).child(item.why || " "))))
       .child(v_flex().flex_none().items_end().gap(2)
-        .child(div().text_size(11).text_color(t.dim).child(since(item.since)))
+        .child(h_flex().h(POP).items_center().text_size(11).text_color(t.dim).child(since(item.since)))
         .child(div().text_size(10.5).text_color(t.dim).child(i < 9 ? String(i + 1) : "")));
   }
 
-  // The sidebar's row: two lines.
+  // The sidebar's row: a title and a description, nothing cut. Both wrap onto as many lines as they
+  // need, so the row grows with its text (it has no fixed height; the list scrolls). The status word
+  // stays at the start of the first description line, the number or age at the end of the first title
+  // line; the mark, logo and chips sit on the first line (LINE high boxes), not in the middle.
   slim(t, item, n) {
     const asks = item.section === "queue";
+    const why = [item.why, item.space].filter(Boolean).join(" · ");
+    const first = (box) => h_flex().h(LINE).flex_none().items_center().child(box);
     return v_flex().id(`q-${item.address}`).flex_none().px(8).py(5).gap(2).rounded(6).cursor_pointer()
       .when(item.focused, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_click(() => this.go(item))
-      .child(h_flex().gap(7).items_center()
-        .child(h_flex().w(11).flex_none().justify_center().child(this.mark(t, item)))
-        .child(this.logo(t, item.program))
-        .child(div().flex_1().min_w(0).truncate().text_color(item.section === "quiet" ? t.muted : t.foreground).when(asks, (el) => el.font_semibold()).child(item.task))
-        .children([this.planChip(t, item)].filter(Boolean))
-        .child(div().flex_none().text_size(10.5).text_color(t.dim).child(asks ? `#${n}` : since(item.since))))
-      .child(h_flex().pl(39).gap(5).min_w(0).text_size(11)
-        .children([this.chip(t, item.kind)].filter(Boolean))
-        .child(div().min_w(0).truncate().text_color(asks ? t.muted : t.dim).child([item.why, item.space].filter(Boolean).join(" · "))));
+      .child(h_flex().gap(7).items_start()
+        .child(h_flex().w(11).h(LINE).flex_none().items_center().justify_center().child(this.mark(t, item)))
+        .child(first(this.logo(t, item.program)))
+        .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${LINE}px`).text_color(item.section === "quiet" ? t.muted : t.foreground).when(asks, (el) => el.font_semibold()).child(item.task))
+        .children([this.planChip(t, item)].filter(Boolean).map(first))
+        .child(h_flex().h(LINE).flex_none().items_center().text_size(10.5).text_color(t.dim).child(asks ? `#${n}` : since(item.since))))
+      .when(Boolean(item.kind || why), (el) => el.child(h_flex().pl(39).gap(5).min_w(0).items_start().text_size(11)
+        .children([this.chip(t, item.kind)].filter(Boolean).map((c) => h_flex().h(NOTE).flex_none().items_center().child(c)))
+        .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${NOTE}px`).text_color(asks ? t.muted : t.dim).child(why || " "))));
   }
 
   head(t, s) {
@@ -260,7 +269,7 @@ export default class AgentQueue extends View {
         .when(others.length > 0, (el) => el.child(div().truncate().text_size(10.5).text_color(t.dim).child(`Also waiting: ${this.othersText(others)}`))))
       .child(v_flex().id("queue-list").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
         .when(!sections.length, (el) => el.child(div().px(8).text_size(11.5).text_color(t.dim).child(this.empty(group))))
-        .children(sections.map((s) => v_flex().gap(1)
+        .children(sections.map((s) => v_flex().gap(3)
           .child(this.head(t, s))
           .children(s.items.map((item, n) => this.slim(t, item, n + 1))))));
   }
