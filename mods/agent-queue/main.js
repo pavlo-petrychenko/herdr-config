@@ -26,6 +26,11 @@ const DECLARED = (globalThis.__agentQueueDeclared ??= new Map()); // terminal ke
 const RULES = (globalThis.__agentQueueRules ??= { config: { groups: [] } }); // space-groups.json
 const PLANS = (globalThis.__agentQueuePlans ??= { map: new Map(), raw: new Map() }); // terminal → plan pointer
 const VIEW_KEY = "plan-review.view"; // the stack side last flipped to (the view bar and the plan-review mod read it)
+// Go to the agent. While the plan shows, the keyboard goes to the plan, not to the agent's hidden terminal.
+function focusAgent(terminal) {
+  run("agent.focus", { terminal });
+  if (shared(VIEW_KEY) === "plan") run("plan-review.focus");
+}
 // Go to the agent and show its plan, when this layout has the flip.
 function openPlan(terminal) {
   run("agent.focus", { terminal });
@@ -34,6 +39,7 @@ function openPlan(terminal) {
   if (!flip) return;
   run("layout.select", { stack: "main-stack", child: "plan" });
   setShared(VIEW_KEY, "plan");
+  run("plan-review.focus");
 }
 const everyone = () => buildQueue(agents(), terminals(), stamp(CHANGED, agents()), DECLARED);
 // The shown space's group: its sections, and how many wait for you in each other group.
@@ -143,7 +149,7 @@ export default class AgentQueue extends View {
   go(item) {
     if (!item) return;
     if (this.popup) closeOverlay(props()?.overlay);
-    run("agent.focus", { terminal: item.address });
+    focusAgent(item.address);
   }
 
   key(e, cx) {

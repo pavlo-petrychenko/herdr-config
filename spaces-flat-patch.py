@@ -307,7 +307,11 @@ swap("""  compact({ w, i }, t) {""", """  // spaces-flat: one space and its agen
     return spaceBlock({
       w, t, fill, list, width: this.width,
       attach: (el) => this.attach(el, w, i, t),
-      go: (a) => run("agent.focus", { terminal: a.address }),
+      go: (a) => {
+        run("agent.focus", { terminal: a.address });
+        // The plan shows: the keyboard goes to the plan, not to the agent's hidden terminal.
+        if (shared("plan-review.view") === "plan") run("plan-review.focus");
+      },
     });
   }
 

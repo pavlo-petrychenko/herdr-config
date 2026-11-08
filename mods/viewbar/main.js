@@ -52,11 +52,21 @@ function world() {
     things: ctx ? available(PROVIDERS, ctx) : [], side, sideOpen, active: sideOpen ? side : null, panelOpen: isOpen(tree, PANEL) };
 }
 
-function flipTo(view) {
+// Flip the stack, and move the keyboard with it, so plan keys never reach the hidden agent terminal
+// (it could type into a running agent) and typing reaches the agent again after the flip back.
+//   plan:  the plan-review mod takes the keyboard itself when it first shows (it retries until it
+//          holds); `plan-review.focus` asks again, now and once more after the frame that shows it
+//          (a command reaches shown copies only).
+//   agent: pane.focus gives the keyboard back to the tab's pane.
+function flipTo(view, cx = null) {
   run("layout.select", { stack: STACK, child: view });
   setShared(VIEW_KEY, view);
-  // Back on the agent: the keyboard goes back to the tab's pane.
-  const pane = view === AGENT_VIEW ? focused()?.pane : null;
+  if (view === PLAN_VIEW) {
+    run("plan-review.focus");
+    if (cx) cx.timer.after(150, () => run("plan-review.focus"));
+    return;
+  }
+  const pane = focused()?.pane;
   if (pane) run("pane.focus", { pane });
 }
 
@@ -90,10 +100,10 @@ export default class ViewBar extends View {
           const c = String(await nextCommand()).replace(/^viewbar\./, "");
           const w = world();
           if (c === "keys") openKeys();
-          else if (c === "close") w.flip && w.view === PLAN_VIEW ? flipTo(AGENT_VIEW) : run("pane.close");
+          else if (c === "close") w.flip && w.view === PLAN_VIEW ? flipTo(AGENT_VIEW, cx) : run("pane.close");
           else if (!w.flip) { /* this layout has no flip */ }
-          else if ((c === "plan" || (c === "flip" && w.view !== PLAN_VIEW)) && w.plan) flipTo(PLAN_VIEW);
-          else if (c === "agent" || c === "flip") flipTo(AGENT_VIEW);
+          else if ((c === "plan" || (c === "flip" && w.view !== PLAN_VIEW)) && w.plan) flipTo(PLAN_VIEW, cx);
+          else if (c === "agent" || c === "flip") flipTo(AGENT_VIEW, cx);
           else if (w.things.some((x) => x.kind === c)) w.active === c ? closeSide() : openSide(c, w);
           cx.notify();
         }
@@ -163,7 +173,7 @@ export default class ViewBar extends View {
       .when(on, (el) => el.bg(t.background).text_color(t.foreground))
       .when(!on, (el) => el.text_color(t.muted).hover((s) => s.text_color(t.foreground)))
       .tooltip(tip)
-      .on_click((_e, cx) => { cx.stop_propagation(); click(); })
+      .on_click((_e, cx) => { cx.stop_propagation(); click(cx); })
       .child(svg(ICON(icon)).size(14).flex_none())
       .child(div().flex_none().child(label))
       .children(extra ? [extra] : []);
@@ -175,8 +185,8 @@ export default class ViewBar extends View {
     const flip = `${mac() ? "⌘⇧R" : "Ctrl+Shift+R"}`;
     const state = w.plan && STATES[w.plan.pointer.status];
     const left = !w.agent || !w.flip ? [] : [h_flex().h(28).p(2).gap(2).items_center().rounded(8).bg(t.raised)
-      .child(this.segment(t, "agent", "bot", "Agent", w.view !== PLAN_VIEW, `The agent's terminal${w.plan ? ` (${flip})` : ""}`, () => w.view === PLAN_VIEW && flipTo(AGENT_VIEW)))
-      .when(Boolean(w.plan), (el) => el.child(this.segment(t, "plan", "plan", "Plan", w.view === PLAN_VIEW, `Its plan · ${state?.label ?? ""} (${flip})`, () => w.view !== PLAN_VIEW && flipTo(PLAN_VIEW),
+      .child(this.segment(t, "agent", "bot", "Agent", w.view !== PLAN_VIEW, `The agent's terminal${w.plan ? ` (${flip})` : ""}`, (cx) => w.view === PLAN_VIEW && flipTo(AGENT_VIEW, cx)))
+      .when(Boolean(w.plan), (el) => el.child(this.segment(t, "plan", "plan", "Plan", w.view === PLAN_VIEW, `Its plan · ${state?.label ?? ""} (${flip})`, (cx) => w.view !== PLAN_VIEW && flipTo(PLAN_VIEW, cx),
         div().size(6).flex_none().rounded(3).bg(t[state?.color] ?? t.dim))))];
     const right = w.things.map((thing) => {
       const on = w.active === thing.kind;
