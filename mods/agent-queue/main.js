@@ -225,15 +225,16 @@ export default class AgentQueue extends View {
         .child(div().text_size(10.5).text_color(t.dim).child(i < 9 ? String(i + 1) : "")));
   }
 
-  // The sidebar's row: a title and a description, nothing cut. Both wrap onto as many lines as they
-  // need, so the row grows with its text (it has no fixed height; the list scrolls). The status word
-  // stays at the start of the first description line, the number or age at the end of the first title
-  // line; the mark, logo and chips sit on the first line (LINE high boxes), not in the middle.
+  // The sidebar's row, nothing cut: the title wraps (mark, logo and title on top, the number or age
+  // at the end of the first title line only), then one meta line (status chip, space), then the
+  // description, which wraps across the row's whole width (it starts under the dot, not under the
+  // title). Inside a row the lines are close (4px); between rows there is 17px (py 7 + gap 3 + py 7).
   slim(t, item, n) {
     const asks = item.section === "queue";
-    const why = [item.why, item.space].filter(Boolean).join(" · ");
     const first = (box) => h_flex().h(LINE).flex_none().items_center().child(box);
-    return v_flex().id(`q-${item.address}`).flex_none().px(8).py(5).gap(2).rounded(6).cursor_pointer()
+    const chip = this.chip(t, item.kind);
+    const meta = item.space || chip;
+    return v_flex().id(`q-${item.address}`).flex_none().px(8).py(7).gap(4).rounded(6).cursor_pointer()
       .when(item.focused, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_click(() => this.go(item))
       .child(h_flex().gap(7).items_start()
@@ -242,9 +243,11 @@ export default class AgentQueue extends View {
         .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${LINE}px`).text_color(item.section === "quiet" ? t.muted : t.foreground).when(asks, (el) => el.font_semibold()).child(item.task))
         .children([this.planChip(t, item)].filter(Boolean).map(first))
         .child(h_flex().h(LINE).flex_none().items_center().text_size(10.5).text_color(t.dim).child(asks ? `#${n}` : since(item.since))))
-      .when(Boolean(item.kind || why), (el) => el.child(h_flex().pl(39).gap(5).min_w(0).items_start().text_size(11)
-        .children([this.chip(t, item.kind)].filter(Boolean).map((c) => h_flex().h(NOTE).flex_none().items_center().child(c)))
-        .child(div().flex_1().min_w(0).overflow_hidden().line_height(`${NOTE}px`).text_color(asks ? t.muted : t.dim).child(why || " "))));
+      .when(Boolean(meta), (el) => el.child(h_flex().gap(6).min_w(0).items_start().text_size(11).text_color(t.dim)
+        .children(chip ? [h_flex().h(NOTE).flex_none().items_center().child(chip)] : [])
+        .when(Boolean(chip && item.space), (r) => r.child(h_flex().h(NOTE).flex_none().items_center().child("·")))
+        .when(Boolean(item.space), (r) => r.child(div().flex_1().min_w(0).overflow_hidden().line_height(`${NOTE}px`).child(item.space)))))
+      .when(Boolean(item.why), (el) => el.child(div().min_w(0).overflow_hidden().text_size(11).line_height(`${NOTE}px`).text_color(asks ? t.muted : t.dim).child(item.why)));
   }
 
   head(t, s) {
