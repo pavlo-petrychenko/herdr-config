@@ -12,7 +12,6 @@ My Herdr customizations. This repo is the Herdr home, `~/.config/herdr-app`.
   - `file-viewer`: viewer pane for `herdr-show`
   - `space-groups`: sidebar groups
   - `spaces-flat`: patched copy of the shipped `spaces` mod
-  - `acp-probe`: ACP test mod
 - `layouts/main-flat.json`: patched copy of the shipped `main` layout
 - `keys.json`, `settings.json`, `repo-worktree.json`, `space-groups.json`: config
 - `spaces-flat-sync.sh`, `spaces-flat-patch.py`: re-make `spaces-flat` and `main-flat` after a Herdr update

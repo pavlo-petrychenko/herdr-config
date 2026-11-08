@@ -1,4 +1,6 @@
-// The agent queue: every agent in every space, by what it needs from you (queue.js).
+// The agent queue: the agents in the shown space's group, by what it needs from you (queue.js).
+// Groups are the sidebar's (space-groups: Work, Personal, your folders, Other; groups.js is a copy
+// of mods/space-groups/groups.js). Agents of other groups that wait for you are only counted.
 //   Queue    waits for you, top = next: approve, answer, blocked, review, done; then who
 //            waited longest
 //   Working  at work, or waiting on CI / a deploy / a job
@@ -11,13 +13,23 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, terminals, theme, run, props, closeOverlay, appHome, exec, readTextFile, watchFolder } from "herdr";
-import { buildQueue, since, stamp, parseDeclared, keepsAwake } from "./queue.js";
+import { agents, terminals, spaces, panes, shared, home, theme, run, props, closeOverlay, appHome, exec, readTextFile, watchFolder } from "herdr";
+import { buildQueue, since, stamp, parseDeclared, keepsAwake, scope, elsewhere } from "./queue.js";
+import { CONFIG_FILE, SHARED_KEY, parseConfig, parseManual } from "./groups.js";
 
 // Shared by every copy (sidebar, popup) and kept across reloads.
 const CHANGED = (globalThis.__agentQueueChanged ??= new Map()); // status change times
 const DECLARED = (globalThis.__agentQueueDeclared ??= new Map()); // terminal key → declared status
-const queue = () => buildQueue(agents(), terminals(), stamp(CHANGED, agents()), DECLARED);
+const RULES = (globalThis.__agentQueueRules ??= { config: { groups: [] } }); // space-groups.json
+const everyone = () => buildQueue(agents(), terminals(), stamp(CHANGED, agents()), DECLARED);
+// The shown space's group: its sections, and how many wait for you in each other group.
+const view = () => {
+  const s = scope(agents(), spaces(), panes(), RULES.config, parseManual(shared(SHARED_KEY)));
+  const mine = new Set(s.mine.map((a) => a.address));
+  const all = everyone();
+  const part = (keep) => all.map((x) => ({ ...x, items: x.items.filter((i) => mine.has(i.address) === keep) })).filter((x) => x.items.length);
+  return { group: s.group, sections: part(true), others: elsewhere(part(false), s.groupOfSpace) };
+};
 
 const DIR = () => `${appHome()}/data/agent-status`;
 const DUMP = 'mkdir -p "$1" && cd "$1" && for f in *.json; do [ -e "$f" ] && printf "%s\\t%s\\n" "$f" "$(tr -d "\\n" < "$f")"; done; true';
@@ -31,6 +43,10 @@ export default class AgentQueue extends View {
     this.popup = Boolean(props()?.overlay);
     this.handle = cx.focus_handle();
     if (this.popup) this.handle.focus();
+    // The group rules: now, then every 10 s in the sidebar copy (the file is small).
+    const readRules = async (cx) => { RULES.config = parseConfig(await readTextFile(`${appHome()}/${CONFIG_FILE}`).catch(() => null), home()); cx.notify(); };
+    cx.spawn(readRules);
+    if (!this.popup) cx.timer.every(10000, (cx) => { cx.spawn(readRules); });
     // What agents declared: all of it once, then each file as it changes.
     cx.spawn(async (cx) => {
       const r = await exec("/bin/sh", ["-c", DUMP, "sh", DIR()]).catch(() => null);
@@ -51,11 +67,11 @@ export default class AgentQueue extends View {
         cx.notify();
       }
     });
-    // Keep the Mac awake while an agent works. exec has a 30 s limit, so short runs, one after
+    // Keep the Mac awake while an agent works, in any group. exec has a 30 s limit, so short runs, one after
     // the other; each ends by itself, so nothing stays behind if Herdr dies. The display still sleeps.
     if (!this.popup) cx.spawn(async (cx) => {
       for (;;) {
-        if (keepsAwake(queue())) {
+        if (keepsAwake(everyone())) {
           const r = await exec("/usr/bin/caffeinate", ["-ims", "-t", "25"]).catch(() => null);
           if (r?.code === 0) continue;
         }
@@ -72,7 +88,7 @@ export default class AgentQueue extends View {
   }
 
   rows() {
-    return queue().flatMap((g) => g.items);
+    return view().sections.flatMap((g) => g.items);
   }
 
   go(item) {
@@ -156,15 +172,23 @@ export default class AgentQueue extends View {
     return div().px(8).pb(1).text_size(10.5).font_semibold().text_color(hot ? t.blocked : t.dim).child(`${s.title.toUpperCase()}  ${s.items.length}`);
   }
 
+  // "Agents · Personal" (no group: "Agents").
+  title(group) { return group ? `Agents · ${group}` : "Agents"; }
+  // "Work 2 · Other 1": who waits for you in the other groups.
+  othersText(others) { return others.map((o) => `${o.name} ${o.n}`).join(" · "); }
+  empty(group) { return group ? `No agents in ${group}.` : "No agents running."; }
+
   sidebar(t) {
-    const sections = queue();
+    const { group, sections, others } = view();
     const waiting = sections.find((s) => s.key === "queue")?.items.length ?? 0;
     return v_flex().id("agent-queue").size_full().pt(6).px(8).gap(8).text_size(12).border_t(1).border_color(t.border)
-      .child(h_flex().px(8).h(24).items_center().text_size(11.5).text_color(t.muted)
-        .child(div().flex_1().child("Agents"))
-        .child(div().text_color(waiting ? t.foreground : t.dim).child(waiting ? `${waiting} waiting for you` : "nothing for you")))
+      .child(v_flex().px(8).gap(1)
+        .child(h_flex().h(24).items_center().text_size(11.5).text_color(t.muted)
+          .child(div().flex_1().min_w(0).truncate().child(this.title(group)))
+          .child(div().flex_none().text_color(waiting ? t.foreground : t.dim).child(waiting ? `${waiting} waiting for you` : "nothing for you")))
+        .when(others.length > 0, (el) => el.child(div().truncate().text_size(10.5).text_color(t.dim).child(`Also waiting: ${this.othersText(others)}`))))
       .child(v_flex().id("queue-list").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
-        .when(!sections.length, (el) => el.child(div().px(8).text_size(11.5).text_color(t.dim).child("No agents running.")))
+        .when(!sections.length, (el) => el.child(div().px(8).text_size(11.5).text_color(t.dim).child(this.empty(group))))
         .children(sections.map((s) => v_flex().gap(1)
           .child(this.head(t, s))
           .children(s.items.map((item, n) => this.slim(t, item, n + 1))))));
@@ -173,18 +197,21 @@ export default class AgentQueue extends View {
   render(_cx) {
     const t = theme();
     if (!this.popup) return this.sidebar(t);
-    const sections = queue();
+    const { group, sections, others } = view();
     const total = sections.reduce((n, s) => n + s.items.length, 0);
     if (this.at >= total) this.at = Math.max(0, total - 1);
     let i = 0;
     return v_flex().id("agent-queue").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .size_full().p(14).gap(10).bg(t.popover).text_size(12.5)
       .child(h_flex().gap(14).items_center()
-        .child(div().text_size(14).font_semibold().text_color(t.foreground).child("Agents"))
-        .child(div().flex_1().text_size(11).text_color(t.muted).child(sections.map((s) => `${s.items.length} ${s.title.toLowerCase()}`).join(" · ")))
+        .child(div().text_size(14).font_semibold().text_color(t.foreground).child(this.title(group)))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child([
+          sections.map((s) => `${s.items.length} ${s.title.toLowerCase()}`).join(" · "),
+          others.length ? `also waiting: ${this.othersText(others)}` : "",
+        ].filter(Boolean).join("  ·  ")))
         .child(div().text_size(11).text_color(t.dim).child("↑↓ · ↵ or 1–9 go · Esc")))
       .child(v_flex().id("queue").h(470).flex_none().gap(10).overflow_y_scrollbar()
-        .when(total === 0, (el) => el.child(div().p(10).text_color(t.dim).child("No agents running.")))
+        .when(total === 0, (el) => el.child(div().p(10).text_color(t.dim).child(this.empty(group))))
         .children(sections.map((s) => v_flex().gap(2)
           .child(this.head(t, s))
           .children(s.items.map((item) => this.row(t, item, i++))))));

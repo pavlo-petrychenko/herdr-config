@@ -75,3 +75,11 @@ export function parseSnapshot(stdout) {
   const parts = main.split("/");
   return { repo: { top, main, name: parts.at(-1), parent: parts.slice(0, -1).join("/") || "/" }, list: parseWorktrees(porcelain, refs) };
 }
+
+// Where a list must scroll so that row `at` shows, or null when it shows already.
+// `first` is the first row in view; `visible` is how many rows fit.
+export function scrollTarget(at, first, visible) {
+  if (at < first) return at;
+  if (at >= first + visible) return at - visible + 1;
+  return null;
+}

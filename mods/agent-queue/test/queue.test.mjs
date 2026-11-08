@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildQueue, classify, sentence, since, stamp, statusKey, parseDeclared, keepsAwake, WAITING_AWAKE_MS } from "../queue.js";
+import { buildQueue, classify, sentence, since, stamp, statusKey, parseDeclared, keepsAwake, WAITING_AWAKE_MS, scope, elsewhere, place } from "../queue.js";
+import { parseConfig, parseManual } from "../groups.js";
 
 const claude = { name: "Claude Code", key: "claude" };
 const agent = (address, status, title, extra = {}) => ({ address, status, title, space_name: "website", tab_name: "1", program: claude, ...extra });
@@ -72,4 +73,40 @@ test("keepsAwake: agents at work and recent waits only", () => {
   assert.equal(keepsAwake(working({ kind: null, since: null })), true);
   assert.equal(keepsAwake(working({ kind: "waiting", since: 1000 }), 1000 + WAITING_AWAKE_MS - 1), true);
   assert.equal(keepsAwake(working({ kind: "waiting", since: 1000 }), 1000 + WAITING_AWAKE_MS), false);
+});
+
+// Groups: the queue shows the shown space's group only.
+const RULES = parseConfig(JSON.stringify({ groups: [{ name: "Work", folders: ["~/work/**"] }, { name: "Personal", folders: ["~/me/**"] }] }), "/h");
+const sp = (id, folder, active = false, tabs = []) => ({ id, folder, active, tabs });
+const SPACES = [sp("w1", "/h/work/api", true), sp("p1", "/h/me/blog"), sp("o1", "/tmp/x")];
+const AGENTS = [agent("a", "idle", "api", { space: "w1" }), agent("b", "idle", "blog", { space: "p1" }), agent("c", "idle", "x", { space: "o1" })];
+
+test("place: a space is where its first terminal is, else its folder", () => {
+  const s = sp("s", "/h/me", false, [{ id: "t1" }]);
+  assert.equal(place(s, [{ tab: "t1", cwd: "/h/work/api" }]), "/h/work/api");
+  assert.equal(place(s, [{ tab: "t2", cwd: "/h/work/api" }]), "/h/me");
+});
+
+test("scope: only the shown space's group", () => {
+  const s = scope(AGENTS, SPACES, [], RULES, parseManual(null));
+  assert.equal(s.group, "Work");
+  assert.deepEqual(s.mine.map((a) => a.address), ["a"]);
+  const p = scope(AGENTS, SPACES.map((x) => ({ ...x, active: x.id === "p1" })), [], RULES, parseManual(null));
+  assert.deepEqual([p.group, p.mine.map((a) => a.address)], ["Personal", ["b"]]);
+  const o = scope(AGENTS, SPACES.map((x) => ({ ...x, active: x.id === "o1" })), [], RULES, parseManual(null));
+  assert.deepEqual([o.group, o.mine.map((a) => a.address)], ["Other", ["c"]]);
+});
+
+test("scope: a space you moved goes by your folder; no groups or no shown space = everyone", () => {
+  const moved = scope(AGENTS, SPACES, [], RULES, parseManual({ folders: [], of: { p1: "Work" } }));
+  assert.deepEqual(moved.mine.map((a) => a.address), ["a", "b"]);
+  assert.equal(scope(AGENTS, SPACES, [], { groups: [] }, parseManual(null)).group, null);
+  assert.equal(scope(AGENTS, SPACES.map((x) => ({ ...x, active: false })), [], RULES, parseManual(null)).mine.length, 3);
+});
+
+test("elsewhere: who waits in the other groups, most first", () => {
+  const g = new Map([["p1", "Personal"], ["o1", "Other"], ["o2", "Other"]]);
+  const sections = [{ key: "queue", items: [{ spaceId: "p1" }, { spaceId: "o1" }, { spaceId: "o2" }] }, { key: "working", items: [{ spaceId: "p1" }] }];
+  assert.deepEqual(elsewhere(sections, g), [{ name: "Other", n: 2 }, { name: "Personal", n: 1 }]);
+  assert.deepEqual(elsewhere([], g), []);
 });

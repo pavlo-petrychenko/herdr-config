@@ -15,12 +15,13 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, spaces, panes, focused, exec, home, appHome, readTextFile, nextCommand } from "herdr";
 import { CONFIG_FILE, parseConfig, entryFor } from "./config.js";
 import { getStrategy } from "./strategies/index.js";
-import { SNAPSHOT, parseSnapshot, filterWorktrees, exactMatch, spaceFor, ago } from "./worktrees.js";
+import { SNAPSHOT, parseSnapshot, filterWorktrees, exactMatch, spaceFor, ago, scrollTarget } from "./worktrees.js";
 import { removePlan } from "./remover.js";
 
 const ICON = (name) => `mods/repo-worktree/${name}.svg`;
 const tilde = (path, h) => (path && h && path.startsWith(h) ? `~${path.slice(h.length)}` : path ?? "");
 const ROW = 40;
+const ROW_STEP = ROW + 2; // a row and the gap under it
 const MAX_ROWS = 8;
 
 // Where a space is now: its first terminal's live folder, else where it was made.
@@ -63,6 +64,8 @@ export default class RepoWorktree extends View {
     this.edited = {};
     this.list = [];
     this.at = 0; // the chosen row
+    this.top = 0; // the first row in view
+    this.wheel = 0; // wheel distance not yet worth a whole row
     this.marked = new Set(); // paths of checkouts marked for removal
     this.confirm = null; // while asking: [{ c, dirty, unpushed, open }]
     this.handle = cx.focus_handle();
@@ -156,6 +159,7 @@ export default class RepoWorktree extends View {
     this.syncing = false;
     this.error = "";
     this.at = 0;
+    this.revealChosen();
     cx.notify();
   }
 
@@ -192,6 +196,26 @@ export default class RepoWorktree extends View {
   move(by) {
     const n = this.rows().length;
     if (n) this.at = (this.at + by + n) % n;
+    this.revealChosen();
+  }
+
+  // Scroll only when the chosen row is out of view, by as little as possible.
+  revealChosen() {
+    const target = scrollTarget(this.at, this.top, MAX_ROWS);
+    if (target !== null) this.top = target;
+  }
+
+  // The list draws MAX_ROWS rows from `top`, so it scrolls by row. A virtual list cannot be used:
+  // its rows cannot have the handlers that choose a row on hover and mark it on a click.
+  // The chosen row stays in view, so Enter never acts on a row you cannot see.
+  scrolled(e, cx) {
+    this.wheel += e.delta.y;
+    const steps = Math.trunc(this.wheel / ROW_STEP);
+    if (!steps) return;
+    this.wheel -= steps * ROW_STEP;
+    this.top = Math.max(0, Math.min(this.top - steps, this.rows().length - MAX_ROWS));
+    this.at = Math.max(this.top, Math.min(this.at, this.top + MAX_ROWS - 1));
+    cx.notify();
   }
 
   places() {
@@ -450,6 +474,7 @@ export default class RepoWorktree extends View {
     if (this.confirm) return this.renderConfirm(root, t);
     const rows = this.rows();
     if (this.at >= rows.length) this.at = Math.max(0, rows.length - 1);
+    this.top = Math.max(0, Math.min(this.top, rows.length - MAX_ROWS));
     const places = this.places();
     const count = this.list.length;
     return root
@@ -458,11 +483,17 @@ export default class RepoWorktree extends View {
       .child(
         v_flex()
           .id("rows")
-          .h(Math.max(1, Math.min(rows.length, MAX_ROWS)) * (ROW + 2))
+          .relative()
+          .h(Math.max(1, Math.min(rows.length, MAX_ROWS)) * ROW_STEP)
           .flex_none()
           .gap(2)
-          .overflow_y_scrollbar()
-          .children(rows.map((r, i) => this.row(t, r, i, places)))
+          .on_scroll_wheel((e, cx) => this.scrolled(e, cx))
+          .children(rows.slice(this.top, this.top + MAX_ROWS).map((r, i) => this.row(t, r, this.top + i, places)))
+          .when(rows.length > MAX_ROWS, (el) => el.child(
+            div().absolute().right(0).w(3).rounded(2).bg(t.border)
+              .top((this.top / rows.length) * MAX_ROWS * ROW_STEP)
+              .h((MAX_ROWS / rows.length) * MAX_ROWS * ROW_STEP),
+          ))
           .when(rows.length === 0, (el) => el.child(div().h(ROW).px(10).flex().items_center().text_color(t.dim).child(count ? "No match." : "…"))),
       )
       .child(

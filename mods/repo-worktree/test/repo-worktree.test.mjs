@@ -297,3 +297,13 @@ test("snapshot: one git call gives the repo and its checkouts, from any checkout
   const outside = spawnSync("/bin/sh", ["-c", SNAPSHOT, "sh", root], { encoding: "utf8" });
   assert.equal(parseSnapshot(outside.stdout), null);
 });
+
+test("the list scrolls only when the chosen row is out of view", async () => {
+  const { scrollTarget } = await import("../worktrees.js");
+  assert.equal(scrollTarget(0, 0, 8), null);
+  assert.equal(scrollTarget(7, 0, 8), null);
+  assert.equal(scrollTarget(8, 0, 8), 1); // down past the last visible row
+  assert.equal(scrollTarget(3, 5, 8), 3); // up past the first visible row
+  assert.equal(scrollTarget(0, 6, 8), 0); // wrap to the top
+  assert.equal(scrollTarget(13, 0, 8), 6); // wrap to the bottom
+});

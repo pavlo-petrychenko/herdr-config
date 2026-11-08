@@ -17,7 +17,6 @@
 
 !/mods/
 /mods/*
-!/mods/acp-probe/
 !/mods/agent-queue/
 !/mods/agent-usage/
 !/mods/file-viewer/

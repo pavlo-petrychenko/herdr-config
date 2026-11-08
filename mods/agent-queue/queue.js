@@ -21,6 +21,8 @@
 //      replies (~/.claude/hooks/herdr-status.mjs).
 //   3. Without either: Herdr's "done" (finished, not looked at) is review.
 
+import { groupOf } from "./groups.js";
+
 export const KINDS = ["approve", "answer", "blocked", "review", "done"];
 export const SECTIONS = [
   { key: "queue", title: "Queue" },
@@ -83,6 +85,7 @@ export function buildQueue(agents, terminals, changed = new Map(), declared = ne
       since: c.since ?? null,
       task: title && title !== program ? title : clean(a.tab_name) && !/^\d+$/.test(a.tab_name) ? clean(a.tab_name) : program,
       space: a.space_name ?? "",
+      spaceId: a.space ?? null,
       program: a.program ?? null,
       helpers: helpers.get(a.address) ?? 0,
       focused: Boolean(a.focused),
@@ -96,6 +99,37 @@ export function buildQueue(agents, terminals, changed = new Map(), declared = ne
     mine.sort(s.key === "queue" ? (x, y) => rank(x) - rank(y) || waitedLongest(x, y) : newest);
     return { ...s, items: mine };
   }).filter((s) => s.items.length);
+}
+
+/** Where a space is, as the spaces-flat sidebar groups it: its first terminal's live folder, else its folder. */
+export function place(space, panes) {
+  const tabs = new Set((space.tabs ?? []).map((c) => c.id));
+  return (panes ?? []).find((p) => tabs.has(p.tab) && p.cwd)?.cwd || space.folder;
+}
+
+/**
+ * Only the agents in the shown space's group (space-groups: Work, Personal, your folders, Other).
+ * spaces, panes: Herdr's; config, manual: groups.js parseConfig / parseManual.
+ * → { group: name | null, mine: agents, groupOfSpace: Map spaceId → name }
+ * No groups set up, or no shown space: group null, every agent.
+ */
+export function scope(agents, spaces, panes, config, manual) {
+  const all = agents ?? [];
+  const groupOfSpace = new Map((spaces ?? []).map((s) => [s.id, groupOf({ id: s.id, folder: place(s, panes) }, config, manual).name]));
+  const shown = (spaces ?? []).find((s) => s.active);
+  if (!shown || (!config.groups.length && !manual.folders.length)) return { group: null, mine: all, groupOfSpace };
+  const group = groupOfSpace.get(shown.id);
+  return { group, mine: all.filter((a) => groupOfSpace.get(a.space) === group), groupOfSpace };
+}
+
+/** Agents of the other groups that wait for you: built queue sections → [{ name, n }], most first. */
+export function elsewhere(sections, groupOfSpace) {
+  const n = new Map();
+  for (const i of sections.find((s) => s.key === "queue")?.items ?? []) {
+    const name = groupOfSpace.get(i.spaceId);
+    if (name) n.set(name, (n.get(name) ?? 0) + 1);
+  }
+  return [...n].map(([name, count]) => ({ name, n: count })).sort((x, y) => y.n - x.n);
 }
 
 /** A declared "waiting" stops keeping the Mac awake after this: nothing clears it if the job never reports back. */
