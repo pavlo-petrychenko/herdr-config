@@ -23,6 +23,7 @@
 !/mods/repo-worktree/
 !/mods/space-groups/
 !/mods/spaces-flat/
+!/mods/viewbar/
 
 # Written by Herdr into each mod.
 **/gpui-kit.d.ts
