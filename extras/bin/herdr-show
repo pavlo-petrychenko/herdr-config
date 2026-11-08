@@ -5,7 +5,8 @@
 //   herdr-show --close                                close this agent's viewer
 //
 // Paths are relative to the current folder. `src/a.ts:40-80` marks lines 40-80 and scrolls
-// to them; `notes.md` renders markdown. Showing a file again updates its tab.
+// to them; `notes.md` renders markdown; an image (png, jpg, gif, webp, svg) is drawn, fitted to
+// the pane. Showing a file again updates its tab.
 // The viewer is the `file-viewer` mod; its state is <appHome>/data/file-viewer/<terminal>.json.
 // Focus stays on the agent's terminal.
 
@@ -28,6 +29,7 @@ function herdr(args) {
 (async () => {
   const appHome = process.env.HERDR_APP_HOME || path.join(os.homedir(), ".config/herdr-app");
   const lib = await import(path.join(appHome, "mods/file-viewer/state.js"));
+  const images = await import(path.join(appHome, "mods/file-viewer/images.js"));
   const args = process.argv.slice(2);
   if (!args.length || args.includes("-h") || args.includes("--help")) { console.log(usage); process.exit(args.length ? 0 : 1); }
 
@@ -50,6 +52,8 @@ function herdr(args) {
     const s = read();
     if (s.pane && alive(s.pane)) { herdr(["do", "pane.close", "--pane", s.pane]); back(); }
     write({ ...s, tabs: [], active: null, pane: null, seq: s.seq + 1 });
+    // The viewer's copies of images (the mod draws only files under the app home).
+    fs.rmSync(path.join(appHome, images.imageDir(path.basename(file, ".json"))), { recursive: true, force: true });
     console.log("closed");
     return;
   }
