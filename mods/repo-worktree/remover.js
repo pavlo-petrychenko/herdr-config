@@ -19,7 +19,8 @@
 //   plans         delete the checkout's agent-plan-review plans: `agent-plan-review forget
 //                 --worktree <path>`. Best-effort: skipped quietly when agent-plan-review is not
 //                 installed or is too old to have `forget`; a real error is shown in the output
-//                 but does not make the removal count as failed.
+//                 but does not make the removal count as failed. Needs `agent-plan-review` on
+//                 PATH (e.g. `npm link` in the agent-plan-review checkout).
 
 import { shellQuote } from "./template.js";
 
@@ -76,7 +77,7 @@ export function removePlan(items, main, options = {}) {
           `forget_plans() {`,
           `  command -v agent-plan-review >/dev/null 2>&1 || return 0`,
           `  out=$(agent-plan-review forget --worktree "$1" 2>&1); rc=$?`,
-          `  if [ "$rc" -ne 0 ] && printf %s "$out" | grep -qiE 'unknown (sub)?command|unrecognized (sub)?command|invalid command|no such command|not a known command'; then`,
+          `  if [ "$rc" -ne 0 ] && { printf %s "$out" | grep -qiE 'unknown (sub)?command|unrecognized (sub)?command|invalid command|no such command|not a known command' || { printf %s "$out" | grep -q 'Usage:' && ! printf %s "$out" | grep -q '^  forget'; }; }; then`,
           `    echo "plans: agent-plan-review has no forget command; skipped"; return 0`,
           `  fi`,
           `  [ -z "$out" ] || printf '%s\\n' "$out"`,

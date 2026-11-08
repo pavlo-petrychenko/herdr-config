@@ -325,6 +325,13 @@ test("remove: plans option forgets each checkout's plans, tolerates a missing or
   r = runPlan(removePlan(items, main), bin);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /plans: agent-plan-review has no forget command; skipped/);
+  // Old version that prints its usage text and exits 1: also skipped.
+  add();
+  bin = fake(`printf 'agent-plan-review — a local review surface\\n\\nUsage:\\n  agent-plan-review <command>\\n\\nCommands:\\n  serve  start\\n'; exit 1`);
+  r = runPlan(removePlan(items, main), bin);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /plans: agent-plan-review has no forget command; skipped/);
+  assert.doesNotMatch(r.stdout, /Usage:/);
   // Real error: shown, removal still succeeds.
   add();
   bin = fake(`echo "database locked" >&2; exit 1`);
