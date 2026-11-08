@@ -3,10 +3,11 @@
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
 // switch, right-click for its menu, drag to reorder.
 
-import { View, div, svg, image } from "gpui-kit";
+import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, home, appHome, readTextFile } from "herdr";
 import { CONFIG_FILE as GROUPS_FILE, SHARED_KEY as GROUPS_KEY, parseConfig as parseGroups, parseManual, assign, prune } from "./groups.js";
+import { spaceBlock } from "./styles.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -46,7 +47,7 @@ export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 
-// spaces-flat: the agents in a space, as rows under it.
+// spaces-flat: the agents in a space, under it (block(), styles.js).
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 function since(ms) {
   if (!ms) return "";
@@ -60,38 +61,12 @@ function statusTimes() {
   if (Date.now() - times.at > 500) times.map = new Map(terminals().map((x) => [x.address, x.status_ms])), (times.at = Date.now());
   return times.map;
 }
-function agentRows(w, t) {
-  const mine = agents().filter((a) => a.space === w.id);
-  if (!mine.length) return [];
-  const when = statusTimes();
-  return mine.map((a) => {
-    const prog = a.program?.name ?? "";
-    const own = clean(a.title);
-    // What it is doing: the agent's own title (Claude Code titles the terminal with its task),
-    // else a tab someone named, else the program.
-    const label = own && own !== prog && !/^[~/]/.test(own) ? own : !/^\d+$/.test(a.tab_name ?? "") && a.tab_name ? a.tab_name : prog;
-    const mark = a.status === "working"
-      ? svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)
-      : div().size(7).flex_none().rounded(4).when(a.status === "idle", (el) => el.border_1().border_color(t.dim)).when(a.status !== "idle", (el) => el.bg(t[a.status] ?? t.dim));
-    return h_flex()
-      .id(`agent-${a.address}`)
-      .h(24)
-      .flex_none()
-      .pl(36)
-      .pr(8)
-      .gap(8)
-      .items_center()
-      .rounded(6)
-      .cursor_pointer()
-      .when(a.focused, (el) => el.bg(t.hover))
-      .hover((s) => s.bg(t.hover))
-      .on_click(() => run("agent.focus", { terminal: a.address }))
-      .child(h_flex().w(11).flex_none().justify_center().child(mark))
-      // The agent's logo from Herdr's program table (Claude Code, OpenCode, Codex, ...).
-      .children(a.program?.icon ? [a.program.tint ? svg(a.program.icon).size(14).flex_none().text_color(t.foreground) : image(a.program.icon).w(14).h(14).flex_none()] : [])
-      .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(a.status === "idle" ? t.muted : t.foreground).child(label))
-      .child(div().flex_none().text_size(11).text_color(a.status === "blocked" ? t.blocked : t.dim).child(a.status === "blocked" ? "needs you" : since(when.get(a.address))));
-  });
+// What it is doing: the agent's own title (Claude Code titles the terminal with its task),
+// else a tab someone named, else the program.
+function agentLabel(a) {
+  const prog = a.program?.name ?? "";
+  const own = clean(a.title);
+  return own && own !== prog && !/^[~/]/.test(own) ? own : !/^\d+$/.test(a.tab_name ?? "") && a.tab_name ? a.tab_name : prog;
 }
 
 export default class Spaces extends View {
@@ -111,6 +86,8 @@ export default class Spaces extends View {
     this.pressed = null;
     this.over = null;
     this.machines = [];
+    this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
+    for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     // spaces-flat: groups. The rules file is read now and every 10 s (it is small).
     this.groupsFolded = new Set(JSON.parse(localStorage.getItem("groups.folded") ?? "[]"));
@@ -118,6 +95,7 @@ export default class Spaces extends View {
     const readRules = async (cx) => { this.groupRules = parseGroups(await readTextFile(`${appHome()}/${GROUPS_FILE}`).catch(() => null), home()); cx.notify(); };
     cx.spawn(readRules);
     cx.timer.every(10000, (cx) => { cx.spawn(readRules); });
+    this.width = 252; // the list's inner width: styles.js wraps names and titles to it
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -131,7 +109,7 @@ export default class Spaces extends View {
     for (const s of sp) if (!this.shown.has(s.id)) this.born[s.id] ??= now;
     const due = this.due(now, sp, panes());
     if (due.size) this.refreshGit(due, cx);
-    if (sp.some((s) => !this.shown.has(s.id))) cx.notify();
+    if (sp.some((s) => !this.shown.has(s.id)) || this.orderingDue(now)) cx.notify();
   }
 
   // Places whose git could have changed: new ones (a new space, a cd), where a
@@ -177,6 +155,53 @@ export default class Spaces extends View {
   refreshMachines(cx) {
     cx.spawn(async cx => {
       try { const r = await hc(["machine", "ls", "--json"]); if (r.code === 0) this.machines = (JSON.parse(r.stdout).machines ?? []).filter((m) => !m.temporary); } catch {}
+      cx.notify();
+    });
+  }
+
+  rebuilt(machine) {
+    return machine?.state === "unreachable" && /^a different core answers there \("[^"]+"\)$/.test(machine.why ?? "");
+  }
+
+  reconnect(machine, cx) {
+    const name = machine.name;
+    if (this.reconnecting[name]?.busy) return;
+    const state = this.reconnecting[name] ??= { machine, removed: false };
+    state.busy = true;
+    state.error = null;
+    localStorage.setItem("machines.reconnecting", JSON.stringify(this.reconnecting));
+    cx.notify();
+    cx.spawn(async cx => {
+      try {
+        const ask = async args => {
+          const r = await hc([...args, "--json"]);
+          if (r.code !== 0) {
+            let error;
+            try { error = JSON.parse(r.stdout || r.stderr).error?.message; } catch {}
+            throw new Error(error || r.stderr || r.stdout || "Couldn't connect.");
+          }
+        };
+        if (!state.removed) {
+          await ask(["machine", "rm", name]);
+          state.removed = true;
+          localStorage.setItem("machines.reconnecting", JSON.stringify(this.reconnecting));
+        }
+        const args = ["machine", "add"];
+        if (machine.via) args.push("--via", machine.target);
+        else args.push(machine.target);
+        args.push("--name", name);
+        if (machine.session) args.push("--session", machine.session);
+        if (machine.temporary) args.push("--temp");
+        await ask(args);
+        this.folded.delete(name);
+        localStorage.setItem("machines.folded", JSON.stringify([...this.folded]));
+        delete this.reconnecting[name];
+      } catch (e) {
+        state.error = String(e.message ?? e);
+        state.busy = false;
+      }
+      localStorage.setItem("machines.reconnecting", JSON.stringify(this.reconnecting));
+      this.refreshMachines(cx);
       cx.notify();
     });
   }
@@ -260,12 +285,17 @@ export default class Spaces extends View {
     openOverlay({ mod: "space-groups", kind: "popup", width: 230, height: 360, props: { space: w.id } });
   }
 
+  orderingDue(now) {
+    return this.ordering && now - this.ordering.at >= 1000
+      && this.ordering.machines.every(name => machines().some(m => m.name === name && m.layout === "ready"));
+  }
+
   // Spaces in order, each worktree space moved under its main checkout's.
   ordered() {
     const sp = spaces(), ps = panes();
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null })).filter((r) => this.shown.has(r.w.id));
+    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null }));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     // spaces-flat: every space is its own row, worktrees too.
     const nested = () => false;
@@ -279,7 +309,26 @@ export default class Spaces extends View {
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
       kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
-    return out;
+    // Simulate the batch so later indexes include earlier moves. An attempted
+    // write can lose a sync conflict: allow the echo to settle before retrying.
+    const order = sp.map(w => w.id);
+    const target = out.map(r => r.w.id);
+    const key = JSON.stringify([order, target, machines()]);
+    if (order.every((id, i) => id === target[i])) {
+      this.ordering = null;
+    } else if (this.ordering?.key !== key || this.orderingDue(Date.now())) {
+      const moved = new Set();
+      this.ordering = { key, at: Date.now(), machines: [] };
+      for (let i = 0; i < out.length; i++) {
+        const from = order.indexOf(out[i].w.id);
+        if (from === i) continue;
+        run("space.move", { id: out[i].w.id, index: i + 1 });
+        moved.add(out[i].w.machine ?? null);
+        order.splice(i, 0, order.splice(from, 1)[0]);
+      }
+      this.ordering.machines = [...moved];
+    }
+    return out.filter(r => this.shown.has(r.w.id));
   }
 
   // spaces-flat: the rows under a header per group (rules, your folders, Other).
@@ -317,8 +366,8 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : [this.row(r, t), ...agentRows(r.w, t)]);
-    const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
+    const draw = (r) => (collapsed ? this.compact(r, t) : this.block(r, t));
+    const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
       return layout === "loading" || (!layout && this.machines.some(k => k.name === m && k.state === "connected"))
@@ -329,8 +378,10 @@ export default class Spaces extends View {
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
-      const machine = this.machines.find(k => k.name === m);
+      const repair = this.reconnecting[m];
+      const machine = this.machines.find(k => k.name === m) ?? repair?.machine;
       const connected = !m || machine?.state === "connected";
+      const rebuilt = this.rebuilt(machine) || !!repair;
       const folded = this.folded.has(m);
       const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 2 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
         .cursor_pointer().hover(s => s.bg(t.hover))
@@ -341,15 +392,23 @@ export default class Spaces extends View {
         })
         .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
         .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
-          .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
+          .when(!connected && !rebuilt, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
+          .when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()
+            .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
+            .child(div().id(`machine-connect-${m}`).text_color(repair?.error ? t.blocked : t.muted)
+              .hover(s => s.text_color(t.foreground))
+              .tooltip(repair?.error || "This machine was rebuilt or replaced. Click to connect to the new one.")
+              .on_click((_e, cx) => { cx.stop_propagation(); this.reconnect(machine, cx); })
+              .child(repair?.busy ? "Connecting…" : "Connect"))))
           .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
+            .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", { machine: m ?? "" }); }).child("+")))
           .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
           .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
       const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7)
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
-        .on_click(() => run("space.new", m ? { machine: m } : {}))
+        .on_click(() => run("space.new", { machine: m ?? "" }))
         .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
+      if (!collapsed && rebuilt) return [head];
       return [head, ...(folded ? [] : mine.length ? mine.flatMap(draw) : [loading(m) ? loadingRow(m) : empty])];
     });
   }
@@ -381,29 +440,59 @@ export default class Spaces extends View {
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
-    return v_flex()
-      .relative()
-      .id(`space-${w.id}`)
+    return this.attach(v_flex()
       .px(8)
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
       .rounded(8)
       .when(on, (el) => el.bg(t.selected))
-      .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
-      .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
+      .when(!on, (el) => el.hover((s) => s.bg(t.hover))), w, i, t)
+      .child(
+        h_flex()
+          .gap(9)
+          .items_center()
+          .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(w.name)),
+      );
+  }
+
+  // spaces-flat: one space and its agents, in the look of styles.js.
+  block({ w, i }, t) {
+    const colors = shared("space.colors") ?? {};
+    const color = colors[w.id] ?? "ansi6";
+    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    const when = statusTimes();
+    const list = agents().filter((a) => a.space === w.id).map((a) => ({
+      address: a.address, status: a.status, focused: a.focused, label: agentLabel(a), age: since(when.get(a.address)),
+    }));
+    return spaceBlock({
+      w, t, fill, list, width: this.width,
+      attach: (el) => this.attach(el, w, i, t),
+      go: (a) => run("agent.focus", { terminal: a.address }),
+    });
+  }
+
+  // spaces-flat: selecting, dragging to reorder and the right-click menu (Herdr's, from row()).
+  attach(el, w, i, t) {
+    const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
+    return el
+      .relative()
+      .id(`space-${w.id}`)
+      .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
+      .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
-          .when(this.pressed < i, line => line.bottom(0))
-          .when(this.pressed > i, line => line.top(0)),
+          .when(fromIndex < i, line => line.bottom(0))
+          .when(fromIndex > i, line => line.top(0)),
       ))
       .on_mouse_down("left", () => {
-        this.pressed = i;
-        this.over = i;
+        this.pressed = w.id;
+        this.over = w.id;
       })
       .on_mouse_move((_e, cx) => {
-        const source = spaces()[this.pressed];
-        const over = source && (source.machine ?? null) === (w.machine ?? null) ? i : null;
+        const source = spaces().find(s => s.id === this.pressed);
+        const over = source && (source.machine ?? null) === (w.machine ?? null) ? w.id : null;
         if (this.pressed !== null && this.over !== over) {
           this.over = over;
           cx.notify();
@@ -414,20 +503,13 @@ export default class Spaces extends View {
         const over = this.over;
         this.pressed = null;
         this.over = null;
-        if (from !== null && over === i && from !== i) run("space.move", { id: spaces()[from].id, index: i + 1 });
-        else if (from === i) run("space.select", { id: w.id });
+        if (from !== null && over === w.id && from !== w.id) {
+          const index = spaces().findIndex(s => s.id === w.id);
+          if (index !== -1) run("space.move", { id: from, index: index + 1 });
+        } else if (from === w.id) run("space.select", { id: w.id });
         cx.notify();
       })
-      .on_mouse_down("right", () => this.menu(w))
-      .child(
-        h_flex()
-          .gap(9)
-          .items_center()
-          .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(w.name))
-          .child(div().flex_1()),
-      );
+      .on_mouse_down("right", () => this.menu(w));
   }
 
   compact({ w, i }, t) {
@@ -464,7 +546,8 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child("Spaces"))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
-      .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
+      .child(v_flex().id("space-list").flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
+        .on_size_change((size, cx) => { const w = Math.round(size.width) - 16; if (w > 0 && w !== this.width) { this.width = w; cx.notify(); } })
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
         .children(this.grouped(t, collapsed)));
   }
