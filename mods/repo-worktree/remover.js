@@ -3,22 +3,27 @@
 //
 // The job works in three stages, so many checkouts go at once:
 //   1. one at a time: unlock each checkout (git skips a locked one)
-//   2. in parallel:   remove Docker containers bound into it (option), delete the folder
+//   2. in parallel:   remove Docker containers bound into it (option), delete its agent-plan-review
+//                     plans (option), delete the folder
 //   3. one at a time: `git worktree prune`, delete the branches (option)
 // Git runs one at a time because parallel git commands on one repo race for lock files.
 // It reports to Herdr like an agent (OSC 7501): working, then done (Herdr's "finished" toast;
 // the job's space then closes itself) or blocked (the space stays, with the output).
 //
 // A removal is full by default: containers, folder and branch all go.
-// Options, in a repo's entry: "remove": { "deleteBranch": true, "docker": true }
+// Options, in a repo's entry: "remove": { "deleteBranch": true, "docker": true, "plans": true }
 //   deleteBranch  delete each checkout's local branch too (Herdr's own Remove keeps it)
 //   docker        first stop and remove the checkout's Docker containers (and their anonymous
 //                 volumes): those with a bind mount inside it, or a compose project folder
 //                 inside it. Named volumes and other checkouts' containers stay.
+//   plans         delete the checkout's agent-plan-review plans: `agent-plan-review forget
+//                 --worktree <path>`. Best-effort: skipped quietly when agent-plan-review is not
+//                 installed or is too old to have `forget`; a real error is shown in the output
+//                 but does not make the removal count as failed.
 
 import { shellQuote } from "./template.js";
 
-export const REMOVE_DEFAULTS = { deleteBranch: true, docker: true };
+export const REMOVE_DEFAULTS = { deleteBranch: true, docker: true, plans: true };
 
 export function validateRemove(remove) {
   if (remove == null) return [];
@@ -66,6 +71,20 @@ export function removePlan(items, main, options = {}) {
           `}`,
         ]
       : [`remove_containers() { :; }`]),
+    ...(o.plans
+      ? [
+          `forget_plans() {`,
+          `  command -v agent-plan-review >/dev/null 2>&1 || return 0`,
+          `  out=$(agent-plan-review forget --worktree "$1" 2>&1); rc=$?`,
+          `  if [ "$rc" -ne 0 ] && printf %s "$out" | grep -qiE 'unknown (sub)?command|unrecognized (sub)?command|invalid command|no such command|not a known command'; then`,
+          `    echo "plans: agent-plan-review has no forget command; skipped"; return 0`,
+          `  fi`,
+          `  [ -z "$out" ] || printf '%s\\n' "$out"`,
+          `  [ "$rc" -eq 0 ] || echo "plans: agent-plan-review forget failed (exit $rc); the removal goes on"`,
+          `  return 0`,
+          `}`,
+        ]
+      : [`forget_plans() { :; }`]),
     `report working ${q(`Removing ${what}`)}`,
     `logs=$(mktemp -d "\${TMPDIR:-/tmp}/repo-worktree.XXXXXX")`,
     `failed=0`,
@@ -73,7 +92,7 @@ export function removePlan(items, main, options = {}) {
     // Stage 1.
     ...items.map((c) => `git -C "$main" worktree unlock ${q(c.path)} >/dev/null 2>&1 || true`),
     // Stage 2.
-    ...items.map((c, i) => `( remove_containers ${q(c.path)}; delete_dir ${q(c.path)} ) >"$logs/${i}.log" 2>&1 & pid${i}=$!`),
+    ...items.map((c, i) => `( remove_containers ${q(c.path)}; forget_plans ${q(c.path)}; delete_dir ${q(c.path)} ) >"$logs/${i}.log" 2>&1 & pid${i}=$!`),
     // Stage 3.
     ...items.flatMap((c, i) => [
       `if wait "$pid${i}"; then`,
