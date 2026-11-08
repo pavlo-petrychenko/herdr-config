@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildQueue, classify, sentence, since, stamp, statusKey, parseDeclared, keepsAwake, WAITING_AWAKE_MS, scope, elsewhere, place } from "../queue.js";
+import { buildQueue, classify, sentence, since, stamp, statusKey, parseDeclared, keepsAwake, WAITING_AWAKE_MS, scope, elsewhere, place, planChip, hasStack } from "../queue.js";
+import { planOfAgent } from "../pointers.js";
 import { parseConfig, parseManual } from "../groups.js";
 
 const claude = { name: "Claude Code", key: "claude" };
@@ -109,4 +110,33 @@ test("elsewhere: who waits in the other groups, most first", () => {
   const sections = [{ key: "queue", items: [{ spaceId: "p1" }, { spaceId: "o1" }, { spaceId: "o2" }] }, { key: "working", items: [{ spaceId: "p1" }] }];
   assert.deepEqual(elsewhere(sections, g), [{ name: "Other", n: 2 }, { name: "Personal", n: 1 }]);
   assert.deepEqual(elsewhere([], g), []);
+});
+
+test("planChip: the plan's state sets label and colour; no plan, no chip", () => {
+  const ptr = (status, title = "Auth refactor") => ({ reviewId: "r", projectKey: "p", version: 1, status, title });
+  assert.deepEqual(planChip(ptr("pending")), { label: "PLAN", color: "ansi3", tip: "Plan waiting for review · Auth refactor · click to open" });
+  assert.equal(planChip(ptr("approved")).color, "ansi2");
+  assert.equal(planChip(ptr("approved")).label, "APPROVED");
+  assert.equal(planChip(ptr("rejected")).color, "ansi1");
+  assert.equal(planChip(ptr("rejected", "")).tip, "Plan changes requested · click to open");
+  assert.equal(planChip(null), null);
+  assert.equal(planChip({ status: "weird" }), null);
+});
+
+test("a row carries its tab, so its plan can be found", () => {
+  const q = buildQueue([agent("t1", "idle", "A", { tab: "tab7" })], [], new Map(), new Map());
+  assert.equal(q[0].items[0].tabId, "tab7");
+});
+
+test("a queue row's plan: the agent's own pointer, else one in its tab", () => {
+  const m = new Map([["t1", { reviewId: "r", projectKey: "p", version: 1, status: "approved", title: "x" }]]);
+  assert.equal(planChip(planOfAgent(m, { address: "t1", tab: "a" }, [])?.pointer)?.color, "ansi2");
+  assert.equal(planChip(planOfAgent(m, { address: "t2", tab: "a" }, [{ tab: "a", terminal: "t1" }])?.pointer)?.color, "ansi2");
+  assert.equal(planChip(planOfAgent(m, { address: "t2", tab: "a" }, [])?.pointer), null);
+});
+
+test("hasStack: finds the flip's stack anywhere in the layout", () => {
+  assert.equal(hasStack({ id: "root", children: [{ id: "work", children: [{ id: "main-stack" }] }] }), true);
+  assert.equal(hasStack({ id: "root", children: [{ id: "main" }] }), false);
+  assert.equal(hasStack(null), false);
 });

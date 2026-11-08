@@ -7,20 +7,34 @@
 //   Quiet    nothing asked
 // In a layout block it is the sidebar version (under the spaces): click a row to go there.
 // As a popup (`mod.open:agent-queue`): ↑↓ choose, Enter or 1–9 go, Esc closes.
+// A plan chip on the rows of agents that have a plan (agent-plan-review pointer files in
+// <appHome>/data/plan-review/<terminal>.json): click = go to the agent and show its plan.
 // What agents declared comes from <appHome>/data/agent-status/<terminal>.json
 // (~/.claude/hooks/herdr-status.mjs writes them).
 // The sidebar copy also keeps the Mac awake while any agent is in Working (queue.js keepsAwake).
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, terminals, spaces, panes, shared, home, theme, run, props, closeOverlay, appHome, exec, readTextFile, watchFolder } from "herdr";
-import { buildQueue, since, stamp, parseDeclared, keepsAwake, scope, elsewhere } from "./queue.js";
+import { agents, terminals, spaces, panes, shared, setShared, home, theme, run, props, closeOverlay, appHome, exec, readTextFile, watchFolder, layout } from "herdr";
+import { buildQueue, since, stamp, parseDeclared, keepsAwake, scope, elsewhere, planChip, hasStack } from "./queue.js";
+import { POINTER_DIR, parsePointer, terminalOfFile, touchesPointers, planOfAgent } from "./pointers.js";
 import { CONFIG_FILE, SHARED_KEY, parseConfig, parseManual } from "./groups.js";
 
 // Shared by every copy (sidebar, popup) and kept across reloads.
 const CHANGED = (globalThis.__agentQueueChanged ??= new Map()); // status change times
 const DECLARED = (globalThis.__agentQueueDeclared ??= new Map()); // terminal key → declared status
 const RULES = (globalThis.__agentQueueRules ??= { config: { groups: [] } }); // space-groups.json
+const PLANS = (globalThis.__agentQueuePlans ??= { map: new Map(), raw: new Map() }); // terminal → plan pointer
+const VIEW_KEY = "plan-review.view"; // the stack side last flipped to (the view bar and the plan-review mod read it)
+// Go to the agent and show its plan, when this layout has the flip.
+function openPlan(terminal) {
+  run("agent.focus", { terminal });
+  let flip = false;
+  try { flip = hasStack(layout()); } catch {}
+  if (!flip) return;
+  run("layout.select", { stack: "main-stack", child: "plan" });
+  setShared(VIEW_KEY, "plan");
+}
 const everyone = () => buildQueue(agents(), terminals(), stamp(CHANGED, agents()), DECLARED);
 // The shown space's group: its sections, and how many wait for you in each other group.
 const view = () => {
@@ -67,6 +81,41 @@ export default class AgentQueue extends View {
         cx.notify();
       }
     });
+    // The plans: all pointer files once, then each as it changes (the sidebar copy reads; the popup shares).
+    if (!this.popup) {
+      const dir = `${appHome()}/${POINTER_DIR}`;
+      const read = async (files) => {
+        let list = files;
+        if (!list) {
+          const r = await exec("ls", ["-1", dir]).catch(() => null);
+          const names = String(r?.stdout ?? "").split("\n").filter((n) => n.endsWith(".json"));
+          list = names.map((n) => `${dir}/${n}`);
+          for (const t of [...PLANS.map.keys()]) if (!names.includes(`${t}.json`)) { PLANS.map.delete(t); PLANS.raw.delete(t); }
+        }
+        for (const f of list) {
+          const terminal = terminalOfFile(f);
+          if (!terminal) continue;
+          const raw = await readTextFile(f).catch(() => null);
+          if (raw === (PLANS.raw.get(terminal) ?? null)) continue;
+          const ptr = raw == null ? null : parsePointer(raw);
+          PLANS.raw.set(terminal, raw);
+          if (ptr) PLANS.map.set(terminal, ptr); else PLANS.map.delete(terminal);
+        }
+      };
+      cx.spawn(async (cx) => {
+        await exec("mkdir", ["-p", dir]).catch(() => null);
+        await read(null);
+        cx.notify();
+        for (;;) {
+          const changed = await watchFolder(dir).catch(() => null);
+          if (!changed) { await new Promise((done) => cx.timer.after(5000, done)); await read(null); cx.notify(); continue; }
+          const mine = changed.filter((c) => touchesPointers(c, dir));
+          if (!mine.length) continue;
+          await read(mine.includes(dir) || mine.includes(`${dir}/`) ? null : mine);
+          cx.notify();
+        }
+      });
+    }
     // Keep the Mac awake while an agent works, in any group. exec has a 30 s limit, so short runs, one after
     // the other; each ends by itself, so nothing stays behind if Herdr dies. The display still sleeps.
     if (!this.popup) cx.spawn(async (cx) => {
@@ -128,6 +177,20 @@ export default class AgentQueue extends View {
     return div().flex_none().text_size(10.5).font_semibold().text_color(this.color(t, kind)).child(LABEL[kind].toUpperCase());
   }
 
+  // The plan chip: the plan's state in colour. Click: go to the agent and show its plan.
+  planChip(t, item) {
+    const chip = planChip(planOfAgent(PLANS.map, { address: item.address, tab: item.tabId }, panes())?.pointer);
+    if (!chip) return null;
+    const color = t[chip.color] ?? t.accent;
+    return h_flex().id(`plan-${item.address}`).flex_none().h(17).px(5).items_center().rounded(5).cursor_pointer()
+      .bg(color + "26").text_color(color).hover((s) => s.bg(color + "4d"))
+      .text_size(9.5).font_semibold()
+      .tooltip(chip.tip)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); if (this.popup) closeOverlay(props()?.overlay); openPlan(item.address); })
+      .child(chip.label);
+  }
+
   // The popup's row.
   row(t, item, i) {
     const on = i === this.at;
@@ -142,7 +205,8 @@ export default class AgentQueue extends View {
         .child(h_flex().gap(8).items_center().min_w(0)
           .child(div().min_w(0).truncate().text_color(t.foreground).font_semibold().child(item.task))
           .child(div().flex_none().px(6).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(item.space))
-          .when(item.helpers > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`+${item.helpers} helper${item.helpers === 1 ? "" : "s"}`))))
+          .when(item.helpers > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`+${item.helpers} helper${item.helpers === 1 ? "" : "s"}`)))
+          .children([this.planChip(t, item)].filter(Boolean)))
         .child(h_flex().gap(6).min_w(0).text_size(11.5)
           .children([this.chip(t, item.kind)].filter(Boolean))
           .child(div().min_w(0).truncate().text_color(asks ? t.foreground : t.muted).child(item.why || " "))))
@@ -161,6 +225,7 @@ export default class AgentQueue extends View {
         .child(h_flex().w(11).flex_none().justify_center().child(this.mark(t, item)))
         .child(this.logo(t, item.program))
         .child(div().flex_1().min_w(0).truncate().text_color(item.section === "quiet" ? t.muted : t.foreground).when(asks, (el) => el.font_semibold()).child(item.task))
+        .children([this.planChip(t, item)].filter(Boolean))
         .child(div().flex_none().text_size(10.5).text_color(t.dim).child(asks ? `#${n}` : since(item.since))))
       .child(h_flex().pl(39).gap(5).min_w(0).text_size(11)
         .children([this.chip(t, item.kind)].filter(Boolean))

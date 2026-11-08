@@ -22,6 +22,7 @@
 //   3. Without either: Herdr's "done" (finished, not looked at) is review.
 
 import { groupOf } from "./groups.js";
+import { STATES } from "./pointers.js";
 
 export const KINDS = ["approve", "answer", "blocked", "review", "done"];
 export const SECTIONS = [
@@ -86,6 +87,7 @@ export function buildQueue(agents, terminals, changed = new Map(), declared = ne
       task: title && title !== program ? title : clean(a.tab_name) && !/^\d+$/.test(a.tab_name) ? clean(a.tab_name) : program,
       space: a.space_name ?? "",
       spaceId: a.space ?? null,
+      tabId: a.tab ?? null,
       program: a.program ?? null,
       helpers: helpers.get(a.address) ?? 0,
       focused: Boolean(a.focused),
@@ -177,4 +179,21 @@ export function parseDeclared(stdout) {
     try { out.set(line.slice(0, tab).replace(/\.json$/, ""), JSON.parse(line.slice(tab + 1))); } catch {}
   }
   return out;
+}
+
+// ---- plans -----------------------------------------------------------------------------------------
+// An agent whose plan was submitted to agent-plan-review (pointers.js) gets a chip on its row. Its
+// colour is the plan's state; a click goes to the agent and shows its plan (the view bar's flip).
+
+/** The chip for a plan pointer: { label, color (theme name), tip }, or null without a plan. */
+export function planChip(pointer) {
+  const st = pointer && STATES[pointer.status];
+  if (!st) return null;
+  return { label: st.short.toUpperCase(), color: st.color, tip: `Plan ${st.label}${pointer.title ? ` · ${pointer.title}` : ""} · click to open` };
+}
+
+/** Whether a layout tree has the stack that flips between the agent and its plan. */
+export function hasStack(tree, id = "main-stack") {
+  if (!tree || typeof tree !== "object") return false;
+  return tree.id === id || (tree.children ?? []).some((c) => hasStack(c, id));
 }
