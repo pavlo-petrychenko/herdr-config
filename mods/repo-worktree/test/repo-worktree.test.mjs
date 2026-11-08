@@ -341,6 +341,17 @@ test("remove: plans option forgets each checkout's plans, tolerates a missing or
   assert.match(r.stdout, /forget failed/);
   assert.doesNotMatch(r.stderr, /failed\./);
   assert.deepEqual(reports(r.stdout).map(([s]) => s), ["working", "done"]);
+  // Bare PATH, as Herdr gives the job: the CLI is still found in the fnm default alias folder.
+  add();
+  const home = join(root, "home");
+  const fnmBin = join(home, ".local/share/fnm/aliases/default/bin");
+  execFileSync("mkdir", ["-p", fnmBin]);
+  writeFileSync(join(fnmBin, "agent-plan-review"), `#!/bin/sh\necho "fnm forgot $3"\n`);
+  execFileSync("chmod", ["+x", join(fnmBin, "agent-plan-review")]);
+  const plan = removePlan(items, main);
+  r = spawnSync(plan.argv[0], plan.argv.slice(1), { cwd: plan.folder, encoding: "utf8", env: { ...testEnv(), HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" } });
+  assert.equal(r.status, 0, r.stderr);
+  for (const c of items) assert.ok(r.stdout.includes(`fnm forgot ${c.path}`), r.stdout);
 });
 
 test("snapshot: one git call gives the repo and its checkouts, from any checkout", async () => {

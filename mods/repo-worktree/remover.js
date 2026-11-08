@@ -19,8 +19,9 @@
 //   plans         delete the checkout's agent-plan-review plans: `agent-plan-review forget
 //                 --worktree <path>`. Best-effort: skipped quietly when agent-plan-review is not
 //                 installed or is too old to have `forget`; a real error is shown in the output
-//                 but does not make the removal count as failed. Needs `agent-plan-review` on
-//                 PATH (e.g. `npm link` in the agent-plan-review checkout).
+//                 but does not make the removal count as failed. Finds `agent-plan-review` on
+//                 PATH or in the fnm default alias, Volta and Homebrew bin folders (Herdr gives
+//                 the job a bare PATH).
 
 import { shellQuote } from "./template.js";
 
@@ -75,6 +76,10 @@ export function removePlan(items, main, options = {}) {
     ...(o.plans
       ? [
           `forget_plans() {`,
+          // Herdr starts this job with a bare PATH (/usr/bin:/bin:…), so a CLI installed with
+          // npm under a Node version manager is not found. Look in the usual places too; the
+          // directory also holds the node binary the CLI needs.
+          `  PATH="$PATH:$HOME/.local/share/fnm/aliases/default/bin:$HOME/.volta/bin:/opt/homebrew/bin:/usr/local/bin"`,
           `  command -v agent-plan-review >/dev/null 2>&1 || return 0`,
           `  out=$(agent-plan-review forget --worktree "$1" 2>&1); rc=$?`,
           `  if [ "$rc" -ne 0 ] && { printf %s "$out" | grep -qiE 'unknown (sub)?command|unrecognized (sub)?command|invalid command|no such command|not a known command' || { printf %s "$out" | grep -q 'Usage:' && ! printf %s "$out" | grep -q '^  forget'; }; }; then`,
