@@ -17,6 +17,10 @@ Herdr changed the text, it stops and names the swap, so nothing is patched half 
      you · 2 agents · 1 working"); its agents hang off a thin line under the badge, their titles
      wrapping too. No fill until hover or selected. The plain row (row()) keeps only its presses
      (attach(), shared by both) and loses the empty spacer that halved the name's width.
+  7. The view bar (mods/viewbar, mods/plan-review): a bar under the tabs, the tab area and the plan in
+     one stack (main-stack), a second view column beside Files/Changes, the hotkeys button in the
+     status bar. See viewbar() below. Needs the viewbar mod (in this repo) and the plan-review mod
+     (agent-plan-review: `agent-plan-review herdr install`).
 """
 import json
 import sys
@@ -318,10 +322,14 @@ swap("""  compact({ w, i }, t) {""", """  // spaces-flat: one space and its agen
 
   compact({ w, i }, t) {""", "space block")
 # The list's inner width, for wrapping (styles.js).
-swap("""      .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
-""", """      .child(v_flex().id("space-list").flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
+# Herdr 0.1.14 made the list's side padding depend on the rail (px(collapsed ? 0 : 8)); 0.1.13 had px(8).
+LIST = """      .child(v_flex().flex_1().min_h(0).px(%s).pb(14).overflow_y_scrollbar().mode("always")
+"""
+LIST_NEW = """      .child(v_flex().id("space-list").flex_1().min_h(0).px(%s).pb(14).overflow_y_scrollbar().mode("always")
         .on_size_change((size, cx) => { const w = Math.round(size.width) - 16; if (w > 0 && w !== this.width) { this.width = w; cx.notify(); } })
-""", "list width")
+"""
+pad = "collapsed ? 0 : 8" if LIST % "collapsed ? 0 : 8" in s else "8"
+swap(LIST % pad, LIST_NEW % pad, "list width")
 open(mod, "w").write(s)
 open(f"{home}/mods/spaces-flat/styles.js", "w").write(STYLES)
 import shutil
@@ -370,5 +378,62 @@ if not walk(d.get("root", d)):
     sys.exit(f"main-flat: no spaces or agents block found; edit {layout} by hand.")
 if not extras(d.get("root", d)):
     sys.exit(f"main-flat: no status bar or spaces list found; edit {layout} by hand.")
+
+
+def find(node, pred, parent=None):
+    """(node, parent) of the first node that satisfies pred, or (None, None)."""
+    if not isinstance(node, dict):
+        return None, None
+    if pred(node):
+        return node, parent
+    for k in node.get("children", []):
+        r = find(k, pred, node)
+        if r[0]:
+            return r
+    return None, None
+
+
+def block_of(mod):
+    return lambda n: isinstance(n.get("content"), dict) and n["content"].get("mod") == mod
+
+
+def viewbar(root):
+    """7. The view bar (viewbar mod, plan-review mod): a thin bar under the tabs, the tab area and
+    the plan in one stack (main-stack: Agent | Plan), a second view column left of Files/Changes,
+    and the hotkeys button beside the usage bar."""
+    if find(root, lambda n: n.get("id") == "main-stack")[0]:
+        return
+    # The tab area becomes the stack's first child; the plan (plan-review) is its second.
+    main, body = find(root, lambda n: isinstance(n.get("content"), dict) and n["content"].get("tab") == "active")
+    if not main or not body or body.get("type") != "row":
+        sys.exit(f"main-flat: no tab area in a row found; edit {layout} by hand.")
+    stack = {"id": "main-stack", "type": "stack", "active": main["id"], "children": [
+        main,
+        {"id": "plan", "type": "block", "content": {"mod": "plan-review"}, "background": "background",
+         "border": {"width": 1, "color": "border"}, "radius": 10},
+    ]}
+    kids = body["children"]
+    kids[kids.index(main)] = stack
+    # The second view: a column on the right edge, shown instead of Files/Changes (viewbar mod).
+    panel, _ = find(body, lambda n: n.get("id") == "panel")
+    side = {"id": "side", "type": "column", "hidden": True, "size": {"px": 400}, "min": 300, "max": 900, "children": [
+        {"id": "side-view", "type": "block", "content": {"mod": "viewbar", "props": {"role": "side"}}}]}
+    kids.insert(kids.index(panel) if panel else len(kids), side)
+    # The bar itself, between the tabs and the work area.
+    work, _ = find(root, lambda n: body in n.get("children", []))
+    work["children"].insert(work["children"].index(body), {
+        "id": "viewbar", "type": "block", "size": {"px": 36}, "content": {"mod": "viewbar", "props": {"role": "bar"}}})
+    # The status bar: the usage bar, and the hotkeys button at its right end.
+    status, parent = find(root, lambda n: isinstance(n.get("content"), dict) and n["content"].get("mod") == "agent-usage"
+                          and n["content"].get("props", {}).get("role") == "bar")
+    if not status or not parent:
+        sys.exit(f"main-flat: no status bar found; edit {layout} by hand.")
+    usage = {"id": "usage", "type": "block", "content": status["content"]}
+    keys = {"id": "keys", "type": "block", "size": {"px": 44}, "content": {"mod": "viewbar", "props": {"role": "keys-button"}}}
+    row = {"id": status["id"], "type": "row", "size": status.get("size", {"px": 28}), "resizable": False, "children": [usage, keys]}
+    parent["children"][parent["children"].index(status)] = row
+
+
+viewbar(d.get("root", d))
 json.dump(d, open(layout, "w"), indent=2)
-print("spaces-flat patched: no nesting, agents inside spaces; main-flat: no Agents list, queue and usage bar added.")
+print("spaces-flat patched: no nesting, agents inside spaces; main-flat: no Agents list, queue, usage bar and view bar added.")

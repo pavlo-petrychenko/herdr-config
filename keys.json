@@ -57,7 +57,8 @@
     "ctrl-7": "space.select:7",
     "ctrl-8": "space.select:8",
     "ctrl-9": "space.select:9",
-    "cmd-shift-n": "mod.open:repo-worktree"
+    "cmd-shift-n": "mod.open:repo-worktree",
+    "cmd-shift-r": "viewbar.flip"
   },
   "terminal": {
     "cmd-c": "terminal.copy",
@@ -69,5 +70,11 @@
     "cmd-left": "send:\u0001",
     "cmd-right": "send:\u0005",
     "cmd-backspace": "send:\u0015"
+  },
+  "layout:main-flat": {
+    "cmd-w": "viewbar.close"
+  },
+  "mod:plan-review": {
+    "cmd-w": "plan-review.back"
   }
 }
