@@ -204,6 +204,8 @@ test("remove: options are validated", async () => {
   assert.deepEqual(validateRemove({ deleteBranch: false, docker: true }), []);
   assert.match(validateRemove({ branch: true })[0], /unknown option "branch"/);
   assert.match(validateRemove({ docker: "yes" })[0], /must be true or false/);
+  assert.match(validateRemove({ plans: "no" })[0], /"remove.plans" must be true or false/);
+  assert.deepEqual(validateRemove({ plans: false }), []);
   assert.match(validateRemove([])[0], /must be an object/);
 });
 
@@ -281,6 +283,64 @@ esac
   writeFileSync(join(root, "docker.log"), "");
   runPlan(removePlan([{ path: join(root, "repo-d"), name: "repo-d", branch: "d" }], main, { docker: false }), bin);
   assert.equal(readFileSync(join(root, "docker.log"), "utf8"), "");
+});
+
+test("remove: plans option forgets each checkout's plans, tolerates a missing or old agent-plan-review", async () => {
+  const { removePlan, REMOVE_DEFAULTS } = await import("../remover.js");
+  assert.equal(REMOVE_DEFAULTS.plans, true);
+  const { root, main } = sandbox();
+  const git = (...a) => execFileSync("git", ["-C", main, ...a], { encoding: "utf8" });
+  const names = ["p1", "p 2"];
+  const items = names.map((n) => ({ path: join(root, `repo-${n}`), name: `repo-${n}`, branch: n.replace(" ", "") }));
+  const add = () => items.forEach((c) => { if (!existsSync(c.path)) git("worktree", "add", "-q", "-b", c.branch + Math.random().toString(36).slice(2, 6), c.path); });
+  const script = (opts) => removePlan(items, main, opts).argv[2];
+  // Script shape: default on, quoted paths, per checkout; off is absent.
+  for (const c of items) assert.ok(script().includes(`forget_plans ${shellQuote(c.path)};`));
+  assert.ok(script().includes("agent-plan-review forget --worktree"));
+  assert.ok(!script({ plans: false }).includes("agent-plan-review forget"));
+
+  const fake = (body) => {
+    const bin = join(root, "bin-apr");
+    execFileSync("mkdir", ["-p", bin]);
+    writeFileSync(join(bin, "agent-plan-review"), `#!/bin/sh\n${body}\n`);
+    execFileSync("chmod", ["+x", join(bin, "agent-plan-review")]);
+    return bin;
+  };
+  // Working forget: called once per checkout with the path; its output is in the job output.
+  add();
+  let bin = fake(`echo "$@" >> "${root}/apr.log"; echo "forgot 2 plans"`);
+  let r = runPlan(removePlan(items, main), bin);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readFileSync(join(root, "apr.log"), "utf8").trim().split("\n").sort(), items.map((c) => `forget --worktree ${c.path}`).sort());
+  assert.match(r.stdout, /forgot 2 plans/);
+  assert.ok(items.every((c) => !existsSync(c.path)));
+  // plans: false never calls it.
+  add();
+  writeFileSync(join(root, "apr.log"), "");
+  r = runPlan(removePlan(items, main, { plans: false }), bin);
+  assert.equal(readFileSync(join(root, "apr.log"), "utf8"), "");
+  // Old version: unknown command is skipped with one line, removal succeeds.
+  add();
+  bin = fake(`echo "error: unknown command 'forget'" >&2; exit 2`);
+  r = runPlan(removePlan(items, main), bin);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /plans: agent-plan-review has no forget command; skipped/);
+  // Old version that prints its usage text and exits 1: also skipped.
+  add();
+  bin = fake(`printf 'agent-plan-review — a local review surface\\n\\nUsage:\\n  agent-plan-review <command>\\n\\nCommands:\\n  serve  start\\n'; exit 1`);
+  r = runPlan(removePlan(items, main), bin);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /plans: agent-plan-review has no forget command; skipped/);
+  assert.doesNotMatch(r.stdout, /Usage:/);
+  // Real error: shown, removal still succeeds.
+  add();
+  bin = fake(`echo "database locked" >&2; exit 1`);
+  r = runPlan(removePlan(items, main), bin);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /database locked/);
+  assert.match(r.stdout, /forget failed/);
+  assert.doesNotMatch(r.stderr, /failed\./);
+  assert.deepEqual(reports(r.stdout).map(([s]) => s), ["working", "done"]);
 });
 
 test("snapshot: one git call gives the repo and its checkouts, from any checkout", async () => {
