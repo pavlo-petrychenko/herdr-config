@@ -10,6 +10,8 @@
 !/space-groups.json
 !/spaces-flat-patch.py
 !/spaces-flat-sync.sh
+!/package.json
+!/kit/
 
 !/layouts/
 /layouts/*

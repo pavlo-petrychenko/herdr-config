@@ -1,0 +1,13 @@
+{
+  "global": {
+    "cmd-shift-n": "mod.open:repo-worktree",
+    "cmd-shift-r": "viewbar.flip",
+    "cmd-shift-g": "viewbar.prs"
+  },
+  "layout:main-flat": {
+    "cmd-w": "viewbar.close"
+  },
+  "mod:plan-review": {
+    "cmd-w": "plan-review.back"
+  }
+}
