@@ -250,6 +250,25 @@ export function mergeBy(...lists) {
   return out;
 }
 
+// ---- is a "created" record real? ----------------------------------------------------------------------------
+
+export const CREATED_BEFORE_MS = 2 * 60 * 1000;
+export const CREATED_AFTER_MS = 30 * 60 * 1000;
+
+/**
+ * Whether a transcript record (a `gitOperation` "created" or a `pr-link`) can be the one written when the PR
+ * was made: one of its times (`ts`) is within [createdAt - 2 min, createdAt + 30 min]. Claude Code also writes
+ * such records when a tool result only PRINTS an old `gh pr create` or PR URL (a subagent that reads other
+ * transcripts), and those come long after the PR exists. No time to compare (no createdAt, no timestamps) is
+ * no evidence against: the record stands.
+ */
+export function withinCreation(createdAt, ts) {
+  const c = Date.parse(createdAt ?? "");
+  const times = (ts ?? []).map((t) => Date.parse(t)).filter(Number.isFinite);
+  if (!Number.isFinite(c) || !times.length) return true;
+  return times.some((t) => t >= c - CREATED_BEFORE_MS && t <= c + CREATED_AFTER_MS);
+}
+
 // ---- the badge --------------------------------------------------------------------------------------
 
 /** { count, problems } over the open and draft PRs that someone of this agent made (not only "other"). */

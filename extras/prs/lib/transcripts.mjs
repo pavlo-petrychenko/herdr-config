@@ -2,8 +2,8 @@
 // its subagents and workflows got. The format is internal to Claude Code, so everything is defensive.
 //
 // Records that matter (one JSON object per line):
-//   {"toolUseResult":{"gitOperation":{"pr":{"number":1,"url":"…/pull/1","action":"created"},"push":{"branch":"b"}}},"cwd":"/x",…}
-//   {"type":"pr-link","prNumber":1,"prUrl":"…","prRepository":"o/r"}                (main transcript only)
+//   {"toolUseResult":{"gitOperation":{"pr":{"number":1,"url":"…/pull/1","action":"created"},"push":{"branch":"b"}}},"cwd":"/x","timestamp":"…",…}
+//   {"type":"pr-link","prNumber":1,"prUrl":"…","prRepository":"o/r","timestamp":"…"}  (main transcript only)
 //   agent-*.meta.json: {"name"?,"description","agentType","worktreePath"?,"worktreeBranch"?}
 //   workflows/wf_<id>.json: {"workflowName",…}
 // A line is parsed only when a plain byte search finds one of the markers in it.
@@ -15,6 +15,16 @@ import { mapLimit, parsePrUrl } from "./util.mjs";
 const CHUNK = 4 * 1024 * 1024;
 const STATIC_NEEDLES = [Buffer.from('"gitOperation"'), Buffer.from('"pr-link"'), Buffer.from("gh pr create")];
 const GH_CREATE = /(?:^|[\s;&|(`])gh\s+pr\s+create\b/;
+// The command with its quoted text blanked, so `grep 'gh pr create'` or a jq filter that names it
+// is not taken for a create.
+const unquoted = (cmd) => cmd.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+/** A Bash command that runs `gh pr create` itself (not one that only mentions it in quotes). */
+export const runsGhCreate = (cmd) => GH_CREATE.test(unquoted(cmd));
+/** The PR URL `gh pr create` printed: it prints the URL as its last line, so only that line counts. */
+export function createdUrl(text) {
+  const last = String(text).trimEnd().split("\n").pop().trim();
+  return /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(last) ? last : null;
+}
 const PULL_URLS = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/g;
 const MAX_PENDING = 50;
 const HEAD_BYTES = 256;
@@ -28,6 +38,21 @@ function addUnique(list, item, keyOf) {
   if (!list.some((x) => keyOf(x) === k)) list.push(item);
 }
 
+const MAX_TS = 8;
+/**
+ * Like addUnique, and keeps the record times (`ts`, the first MAX_TS distinct ones, in file order) of
+ * every record that named the same thing. A PR that was really created got its record seconds after
+ * GitHub made it; the refresh compares these times with the PR's createdAt, because Claude Code also
+ * writes such a record when a tool result merely PRINTS an old `gh pr create` or PR URL.
+ */
+function addClaim(list, item, keyOf, t) {
+  const k = keyOf(item);
+  let cur = list.find((x) => keyOf(x) === k);
+  if (!cur) { cur = { ...item, ts: [] }; list.push(cur); }
+  if (t && !cur.ts.includes(t) && cur.ts.length < MAX_TS) cur.ts.push(t);
+}
+const timeOf = (d) => (typeof d.timestamp === "string" ? d.timestamp : null);
+
 const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((x) => (typeof x === "string" ? x : x?.text ?? "")).join("\n") : "");
 
 /** Applies one parsed record to a file entry. */
@@ -36,14 +61,14 @@ export function applyRecord(d, e) {
   if (d.type === "pr-link" && Number.isInteger(d.prNumber)) {
     const parsed = parsePrUrl(d.prUrl);
     const repo = d.prRepository || parsed?.repo || null;
-    if (repo) addUnique(e.links, { n: d.prNumber, repo, url: d.prUrl ?? null }, (x) => `${x.repo}#${x.n}`);
+    if (repo) addClaim(e.links, { n: d.prNumber, repo, url: d.prUrl ?? null }, (x) => `${x.repo}#${x.n}`, timeOf(d));
   }
   const tur = d.toolUseResult;
   const g = tur && typeof tur === "object" && !Array.isArray(tur) ? tur.gitOperation : null;
   if (g && typeof g === "object") {
     const pr = g.pr;
     if (pr && typeof pr === "object" && pr.action === "created" && Number.isInteger(pr.number)) {
-      addUnique(e.prs, { n: pr.number, url: typeof pr.url === "string" ? pr.url : null, cwd: typeof d.cwd === "string" ? d.cwd : null }, (x) => `${x.url ?? x.cwd}#${x.n}`);
+      addClaim(e.prs, { n: pr.number, url: typeof pr.url === "string" ? pr.url : null, cwd: typeof d.cwd === "string" ? d.cwd : null }, (x) => `${x.url ?? x.cwd}#${x.n}`, timeOf(d));
     }
     const push = g.push;
     if (push && typeof push === "object" && typeof push.branch === "string" && push.branch) {
@@ -56,16 +81,16 @@ export function applyRecord(d, e) {
   if (Array.isArray(content)) {
     for (const b of content) {
       if (!b || typeof b !== "object") continue;
-      if (b.type === "tool_use" && b.name === "Bash" && typeof b.input?.command === "string" && GH_CREATE.test(b.input.command) && typeof b.id === "string") {
+      if (b.type === "tool_use" && b.name === "Bash" && typeof b.input?.command === "string" && runsGhCreate(b.input.command) && typeof b.id === "string") {
         e.gh.cmds++;
         if (e.gh.pending.length < MAX_PENDING) e.gh.pending.push(b.id);
       } else if (b.type === "tool_result" && e.gh.pending.includes(b.tool_use_id)) {
         e.gh.pending = e.gh.pending.filter((id) => id !== b.tool_use_id);
-        const urls = b.is_error ? [] : textOf(b.content).match(PULL_URLS) ?? [];
-        const pr = parsePrUrl(urls[urls.length - 1]);
+        const url = b.is_error ? null : createdUrl(textOf(b.content));
+        const pr = parsePrUrl(url);
         if (!pr) { e.gh.err++; continue; }
         e.gh.ok++;
-        addUnique(e.prs, { n: pr.number, url: urls[urls.length - 1], cwd: typeof d.cwd === "string" ? d.cwd : null }, (x) => `${x.url ?? x.cwd}#${x.n}`);
+        addClaim(e.prs, { n: pr.number, url, cwd: typeof d.cwd === "string" ? d.cwd : null }, (x) => `${x.url ?? x.cwd}#${x.n}`, timeOf(d));
       }
     }
   }
@@ -206,8 +231,8 @@ export async function sessionFiles(transcriptPath) {
 
 /**
  * Scans all files of one session and returns what they hold, with who made each thing:
- *   created   [{ n, url, cwd, by }]       PRs made (gitOperation action "created")
- *   links     [{ n, repo, url }]          pr-link records (main transcript)
+ *   created   [{ n, url, cwd, ts, by }]   PRs made (gitOperation action "created"); ts: times of the records
+ *   links     [{ n, repo, url, ts }]      pr-link records (main transcript)
  *   pushes    [{ branch, cwd, by }]
  *   worktrees [{ path, by, branch0 }]     from agent meta files (branch0 = the branch it started on)
  *   bad       number of unparseable lines
@@ -242,9 +267,9 @@ export async function scanSession(transcriptPath, cache, { concurrency = 8, now 
     e.gh = { ...emptyGh(), ...e.gh };
     out.bad += e.bad ?? 0;
     const by = byOf(f, wfNames.get(f.wfId));
-    for (const p of e.prs) out.created.push({ n: p.n, url: p.url, cwd: p.cwd, by });
+    for (const p of e.prs) out.created.push({ n: p.n, url: p.url, cwd: p.cwd, ts: p.ts ?? [], by });
     for (const p of e.pushes) out.pushes.push({ branch: p.branch, cwd: p.cwd, by });
-    if (f.kind === "main") for (const l of e.links) out.links.push(l);
+    if (f.kind === "main") for (const l of e.links) out.links.push({ ...l, ts: l.ts ?? [] });
     if (f.metaV?.worktreePath) out.worktrees.push({ path: f.metaV.worktreePath, by, branch0: f.metaV.worktreeBranch ?? null });
     // `gh pr create` ran, yet no result could be matched to it and no PR was found. A file that is still
     // being written may simply not have the result yet, so only a file at rest counts.

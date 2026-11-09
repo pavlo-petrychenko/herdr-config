@@ -130,6 +130,8 @@ A list of `{ "kind", "name"? }`, ordered `worktree`, `agent`, `subagent`, `workf
 
 A PR that was not created by a transcript but was found by searching for a pushed branch gets the `by` of whoever pushed that branch.
 
+**A record must fit the PR's age.** A `gitOperation` "created" record or a `pr-link` counts only when its time is within [`createdAt` − 2 minutes, `createdAt` + 30 minutes]. Claude Code writes both kinds of record also when a tool result merely prints an old `gh pr create` or PR URL (a subagent that reads other transcripts), and those come long after the PR exists. Records that do not fit are ignored. A PR left with no `by` (no fitting record, not on a pushed branch, not on the worktree's branch) is not in the file at all, unless it is in the stack or base chain of a PR that has one (then it is `other`). Its number and stack are not fetched again; the rejection is kept per session and PR in `cache/discover/<terminal>.json` (`rejected`).
+
 ### Errors
 
 `{ "kind", "message", "file"? }`, at most 30, no duplicates. The view can show the first one.
@@ -150,7 +152,7 @@ A PR that was not created by a transcript but was found by searching for a pushe
 
 1. **Sessions**: `data/agent-sessions/<terminal>.jsonl` (written by the SessionStart hook), the session running now (`hc get` → the claude process below the foreground pid → `~/.claude/sessions/<pid>.json`), and `--session`. Older sessions are not guessed.
 2. **Transcripts** of each session: the main file, `subagents/agent-*.jsonl`, `subagents/workflows/wf_*/agent-*.jsonl`, with their `.meta.json` and `workflows/wf_*.json`. Only lines with `"gitOperation"`, `"pr-link"` or `gh pr create` are parsed. Results are cached per file by size and modification time in `data/prs/cache/scan.json`; a file that only grew is read from its old end.
-   - PRs: `gitOperation.pr` with `action: "created"`, and `pr-link` records. Workflow agents' transcripts have no `toolUseResult`, so a successful `gh pr create` is also read from the text it printed (the last PR URL in the result).
+   - PRs: `gitOperation.pr` with `action: "created"`, and `pr-link` records, each with the time of its record (the first 8 distinct times are kept). Workflow agents' transcripts have no `toolUseResult`, so a successful `gh pr create` is also read from the text it printed: only a command that runs `gh pr create` itself (not one that names it in quotes), and only when the PR URL is the last line of the result.
    - Pushed branches: `gitOperation.push`. The repo comes from the record's folder (`git remote get-url origin`; a deleted agent worktree falls back to the repo it lived in).
    - Subagent and workflow worktrees: `worktreePath` in the meta file; the branch it has now, if the folder still exists.
 3. **Discovery** (`--discover`, or when a branch has never been searched): one search per repo and chunk, `repo:<r> is:pr head:A head:B … sort:updated-desc` (each under 240 characters; state is not filtered). With the PRs found, PRs outside native stacks get their base chain completed: a search for the PR that holds their base branch, and for PRs based on their head branch (two levels at most). The numbers found are kept in `data/prs/cache/discover/<terminal>.json`.
@@ -171,6 +173,6 @@ A PR that was not created by a transcript but was found by searching for a pushe
 - `<terminal>.json`: the data file. Safe to delete; the next refresh makes it again.
 - `<terminal>.lock`: held while a refresh runs (see Commands). Safe to delete.
 - `cache/scan.json`: transcript scan results by file (plus folder → repo and repo → default branch lookups). Pruned after 45 days or above 6000 files.
-- `cache/discover/<terminal>.json`: searched branches, discovered PR numbers, native stack members.
+- `cache/discover/<terminal>.json`: searched branches, discovered PR numbers, native stack members, and `rejected` (transcript records judged not real: `<session>|<repo>#<number>`).
 - `cache/detail/*.json`: `detail` answers.
 - `cache/gh.json`: when GitHub last refused the stack fields.

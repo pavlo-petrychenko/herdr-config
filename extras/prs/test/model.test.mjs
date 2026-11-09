@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkList, checkResult, checksOf, countChecks, latestRuns, linkRows, mergeBy, reviveRow, summarize, toRow } from "../lib/model.mjs";
+import { checkList, checkResult, checksOf, countChecks, latestRuns, linkRows, mergeBy, reviveRow, summarize, toRow, withinCreation } from "../lib/model.mjs";
 import { readFixture } from "./helpers.mjs";
 
 const REPO = "o/r";
@@ -158,4 +158,21 @@ test("checkList: latest run per check, skipped dropped, sorted fail, pending, pa
   assert.deepEqual(list.find((c) => c.name === "lint"), { name: "lint", workflow: "CI", result: "pass", url: "https://github.com/o/r/actions/runs/2/job/22", runId: "2", jobId: "22", seconds: 120 });
   assert.deepEqual(countChecks(list), { pass: 2, fail: 1, pending: 1, skip: 0 });
   assert.equal(checkResult({ status: "COMPLETED", conclusion: "NEUTRAL" }), "skip");
+});
+
+test("withinCreation: a record counts when it is within [createdAt - 2 min, createdAt + 30 min]", () => {
+  const made = "2026-11-01T10:00:00Z";
+  const at = (s) => [new Date(Date.parse(made) + s * 1000).toISOString()];
+  assert.equal(withinCreation(made, at(1)), true, "a second after");
+  assert.equal(withinCreation(made, at(-120)), true, "2 min before: the PR was made by a later API call than the record's clock");
+  assert.equal(withinCreation(made, at(-121)), false);
+  assert.equal(withinCreation(made, at(30 * 60)), true, "30 min after: a push hook or a slow command");
+  assert.equal(withinCreation(made, at(30 * 60 + 1)), false);
+  assert.equal(withinCreation(made, at(30 * 24 * 3600)), false, "a month after: an old PR printed by a tool result");
+  assert.equal(withinCreation(made, [...at(30 * 24 * 3600), ...at(5)]), true, "one fitting time is enough");
+  assert.equal(withinCreation(made, []), true, "no time to compare: no evidence against");
+  assert.equal(withinCreation(made, undefined), true);
+  assert.equal(withinCreation(made, ["not a time"]), true);
+  assert.equal(withinCreation(null, at(5)), true, "createdAt unknown");
+  assert.equal(withinCreation("garbage", at(5)), true);
 });

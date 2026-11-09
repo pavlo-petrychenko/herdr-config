@@ -18,7 +18,7 @@ const exists = (p) => p in REMOTES || p in BRANCHES || p.startsWith("/work/app")
 function world() {
   const mk = (number, head, base, extra = {}) => ({
     number, title: `PR ${number}`, url: `https://github.com/acme/app/pull/${number}`, state: "OPEN", isDraft: false,
-    baseRefName: base, headRefName: head, headRefOid: `oid${number}`, updatedAt: `2026-11-0${(number % 9) + 1}T00:00:00Z`, createdAt: "2026-11-01T00:00:00Z",
+    baseRefName: base, headRefName: head, headRefOid: `oid${number}`, updatedAt: `2026-11-0${(number % 9) + 1}T00:00:00Z`, createdAt: "2026-11-01T09:59:30Z",
     mergedAt: null, closedAt: null, author: { login: "me" }, reviewDecision: null, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN",
     additions: 1, deletions: 2, changedFiles: 3, autoMergeRequest: null, stack: null, stackEntry: null,
     commits: { nodes: [{ commit: { oid: `oid${number}`, statusCheckRollup: { state: "SUCCESS", contexts: { totalCount: 1, checkRunCountsByState: [{ state: "SUCCESS", count: 1 }], statusContextCountsByState: [] } } } }] },
@@ -32,6 +32,15 @@ function world() {
       [110, mk(110, "other/work", "main", { isDraft: true })],
       [150, mk(150, "wf/imports", "main", { author: { login: "someone" } })],
       [160, mk(160, "child-of-101", "feat/main-work")],
+      // 201-203: an old stack that a subagent only READ about (its records come a month after the PRs were made)
+      [201, mk(201, "old-1", "main", { createdAt: "2026-09-01T08:00:00Z", state: "MERGED", stack: { number: 700, entries: { totalCount: 3 } }, stackEntry: { position: 1 } })],
+      [202, mk(202, "old-2", "old-1", { createdAt: "2026-09-01T08:05:00Z", state: "MERGED", stack: { number: 700, entries: { totalCount: 3 } }, stackEntry: { position: 2 } })],
+      [203, mk(203, "old-3", "old-2", { createdAt: "2026-09-01T08:10:00Z", state: "MERGED", stack: { number: 700, entries: { totalCount: 3 } }, stackEntry: { position: 3 } })],
+      // 204: really made by a subagent 27 s after GitHub made it. 205: in its stack, only READ about.
+      [204, mk(204, "writer-1", "main", { createdAt: "2026-11-01T09:59:40Z", stack: { number: 800, entries: { totalCount: 2 } }, stackEntry: { position: 1 } })],
+      [205, mk(205, "reader-2", "writer-1", { createdAt: "2026-09-02T08:00:00Z", stack: { number: 800, entries: { totalCount: 2 } }, stackEntry: { position: 2 } })],
+      // 207: a pr-link a month late, alone
+      [207, mk(207, "old-solo", "main", { createdAt: "2026-08-01T00:00:00Z", state: "MERGED" })],
     ]),
     "acme/other": new Map([[103, mk(103, "docs/readme", "main", { url: "https://github.com/acme/other/pull/103" })]]),
   };
@@ -48,6 +57,14 @@ function setup({ gh, extra = [] } = {}) {
     const m = /repository\(owner:"([^"]+)",name:"([^"]+)"\)/.exec(q);
     const prs = w[`${m?.[1]}/${m?.[2]}`] ?? new Map();
     const data = { rateLimit: { cost: 1, remaining: 4000, resetAt: "2026-11-09T12:00:00Z" } };
+    if (/e\d+: pullRequest/.test(q)) {
+      data.repository = {};
+      for (const x of q.matchAll(/e(\d+): pullRequest/g)) {
+        const members = [...prs.values()].filter((n) => n.stack?.number === Number(x[1])).sort((a, b) => a.stackEntry.position - b.stackEntry.position);
+        data.repository[`e${x[1]}`] = { stack: { number: Number(x[1]), entries: { totalCount: members.length, nodes: members.map((n) => ({ position: n.stackEntry.position, pullRequest: { number: n.number } })) } } };
+      }
+      return { stdout: JSON.stringify({ data }) };
+    }
     if (m) {
       data.repository = {};
       for (const x of q.matchAll(/p(\d+): pullRequest/g)) data.repository[`p${x[1]}`] = prs.get(Number(x[1])) ?? null;
@@ -102,8 +119,8 @@ test("refresh --discover: PRs, who made them, stacks, count, problems; file writ
   assert.deepEqual(p160.stack, { id: "acme/app~101", native: false, position: 2 });
   assert.deepEqual(out.prs.find((p) => p.number === 101).stack, { id: "acme/app~101", native: false, position: 1 });
 
-  // open + draft with a real kind: 101, 102, 103, 110, 150 (104 merged, 160 other)
-  assert.equal(out.count, 5);
+  // open + draft with a real kind: 101, 102, 103, 110, 150, 204 (104 merged, 160 and 205 other)
+  assert.equal(out.count, 6);
   assert.equal(out.problems, 1, "102 has conflicts");
   assert.deepEqual(out.branches.map((b) => `${b.repo}:${b.name}`), ["acme/app:feat/main-work", "acme/app:fix/parser", "acme/app:wf/imports", "acme/other:docs/readme"]);
   assert.ok(out.discoveredAt);
@@ -127,7 +144,7 @@ test("a later refresh without --discover reuses what discovery found, and does n
   assert.ok(!asked.includes(104), "104 is merged: its row comes from the last file");
   assert.ok(!t.calls.gh.some((q) => /search\(/.test(q)), "no search without --discover");
   assert.ok(out.prs.some((p) => p.number === 104 && p.state === "merged"));
-  assert.equal(out.prs.length, 7);
+  assert.equal(out.prs.length, 9);
   assert.deepEqual(byOf(out, 104), ["workflow:absolute-imports"]);
 });
 
@@ -239,7 +256,10 @@ test("a GitHub without stacked PRs: asked again without the stack fields, and no
       queries.push(q);
       if (/stack/.test(q)) return { code: 1, stdout: JSON.stringify({ errors: [{ message: "Field 'stack' doesn't exist on type 'PullRequest'" }] }) };
       const data = { repository: {} };
-      for (const x of q.matchAll(/p(\d+): pullRequest/g)) data.repository[`p${x[1]}`] = w["acme/app"].get(Number(x[1])) ?? w["acme/other"].get(Number(x[1])) ?? null;
+      for (const x of q.matchAll(/p(\d+): pullRequest/g)) {
+        const n = w["acme/app"].get(Number(x[1])) ?? w["acme/other"].get(Number(x[1]));
+        data.repository[`p${x[1]}`] = n ? { ...n, stack: null, stackEntry: null } : null;
+      }
       return { stdout: JSON.stringify({ data }) };
     },
   });
@@ -317,4 +337,98 @@ test("an unexpected failure inside a run keeps the last good file, stale, with a
   assert.deepEqual(boom.prs.map((p) => p.number), good.prs.map((p) => p.number));
   const onDisk = JSON.parse(fs.readFileSync(dataFile(t.home, "t1"), "utf8"));
   assert.equal(onDisk.errors[0].kind, "internal");
+});
+
+// ---- records written about a PR a long time after it was made ----------------------------------------------
+
+const nums = (out) => out.prs.map((p) => p.number).sort((a, b) => a - b);
+
+test("a created record or pr-link a month after the PR was made is not the agent's; one within a minute is", async () => {
+  const t = setup();
+  const out = await t.go({ discover: true });
+  // 204: a subagent's created record 27 s after GitHub made the PR, and its pr-link: kept
+  assert.deepEqual(byOf(out, 204), ["subagent:Writer"]);
+  // 110: a pr-link 7 minutes after: kept
+  assert.deepEqual(byOf(out, 110), ["agent"]);
+  // 201 (created + pr-link) and 207 (pr-link): records 2 and 3 months late. Dropped, and 201's stack goes with it.
+  for (const n of [201, 202, 203, 207]) assert.ok(!nums(out).includes(n), `#${n} is gone`);
+  // 205: records a month late, but it sits in the stack of 204, which is kept
+  assert.deepEqual(byOf(out, 205), ["other"]);
+  assert.deepEqual(out.prs.find((p) => p.number === 205).stack, { id: "acme/app#800", native: true, position: 2 });
+  assert.equal(out.count, 6, "205 is not counted");
+  assert.ok(!out.repos.includes("acme/zzz"));
+});
+
+test("a dropped PR is not fetched again: not its number, not its stack; the rejection is remembered per session", async () => {
+  const t = setup();
+  await t.go({ discover: true });
+  const disc = JSON.parse(fs.readFileSync(path.join(t.home, "data/prs/cache/discover/t1.json"), "utf8"));
+  assert.deepEqual(Object.keys(disc.rejected).sort(), [
+    `${SESSION}|acme/app#201`, `${SESSION}|acme/app#205`, `${SESSION}|acme/app#207`,
+  ]);
+  assert.ok(!(disc.numbers["acme/app"] ?? []).some((n) => [201, 202, 203, 207].includes(n)));
+  assert.ok(!("acme/app#700" in disc.stacks), "the dropped stack is not cached");
+  assert.ok("acme/app#800" in disc.stacks, "the kept one is");
+
+  for (const discover of [false, true]) {
+    t.calls.gh.length = 0;
+    const out = await t.go({ discover });
+    const asked = askedNumbers(t.calls.gh);
+    for (const n of [201, 202, 203, 207]) assert.ok(!asked.includes(n), `#${n} is not asked for (discover: ${discover})`);
+    assert.ok(!t.calls.gh.some((q) => /e700: pullRequest/.test(q)), "nor its stack");
+    assert.ok(!nums(out).some((n) => [201, 202, 203, 207].includes(n)));
+    assert.deepEqual(byOf(out, 204), ["subagent:Writer"]);
+  }
+});
+
+test("a file from before the fix that lists the dropped PRs is cleaned on the next run", async () => {
+  const t = setup();
+  // Pretend the old version ran: it knew 201-203 and 207 (numbers, stack) and had rows for them.
+  const first = await t.go({ discover: true });
+  const old = JSON.parse(JSON.stringify(first));
+  const row = (n) => ({ ...first.prs.find((p) => p.number === 101), number: n, head: `old-${n}`, base: "main", state: "merged", createdAt: "2026-09-01T08:00:00Z", parent: null, stack: null, by: [{ kind: "agent" }] });
+  old.prs.push(row(201), row(202), row(203), row(207));
+  fs.writeFileSync(dataFile(t.home, "t1"), JSON.stringify(old));
+  const discFile = path.join(t.home, "data/prs/cache/discover/t1.json");
+  const disc = JSON.parse(fs.readFileSync(discFile, "utf8"));
+  disc.rejected = {};
+  disc.numbers["acme/app"] = [...disc.numbers["acme/app"], 201, 202, 203, 207];
+  disc.stacks["acme/app#700"] = { total: 3, members: [201, 202, 203] };
+  fs.writeFileSync(discFile, JSON.stringify(disc));
+  const out = await t.go();
+  assert.ok(!nums(out).some((n) => [201, 202, 203, 207].includes(n)));
+  const after = JSON.parse(fs.readFileSync(discFile, "utf8"));
+  assert.ok(!after.numbers["acme/app"].some((n) => [201, 202, 203, 207].includes(n)));
+  assert.ok(!("acme/app#700" in after.stacks));
+  assert.equal(Object.keys(after.rejected).length, 3);
+});
+
+test("a PR on the worktree's branch stays, whatever the records say", async () => {
+  const t = setup();
+  // 101 is on the worktree's branch (feat/main-work). Make every claim about it a month late.
+  t.world["acme/app"].get(101).createdAt = "2026-07-01T00:00:00Z";
+  const out = await t.go({ discover: true });
+  assert.deepEqual(byOf(out, 101), ["worktree", "agent"], "the records do not count; the branch does: it is the terminal's, and the agent pushed it");
+  assert.ok(nums(out).includes(101));
+  const disc = JSON.parse(fs.readFileSync(path.join(t.home, "data/prs/cache/discover/t1.json"), "utf8"));
+  assert.ok(`${SESSION}|acme/app#101` in disc.rejected, "the late records were judged not real");
+  t.calls.gh.length = 0;
+  assert.ok(nums(await t.go()).includes(101), "and it is still there next time: found by its number from the discovery cache");
+});
+
+test("with no createdAt to compare (a failed fetch kept the old row), claims are weighed on the old row's createdAt", async () => {
+  const t = setup();
+  const good = await t.go({ discover: true });
+  const down = fakeRun([
+    ["hc get t1", { stdout: JSON.stringify({ pid: 1, foreground: { pid: 2, cwd: WT } }) }],
+    ["ps ", { stdout: "" }],
+    [(c, a) => c === "git" && a[2] === "remote", (c, a) => (REMOTES[a[1]] ? { stdout: `${REMOTES[a[1]]}\n` } : { code: 128 })],
+    [(c, a) => c === "git" && a[2] === "rev-parse", (c, a) => (BRANCHES[a[1]] ? { stdout: `${BRANCHES[a[1]]}\n` } : { code: 128 })],
+    [(c) => c === "git", { code: 1 }],
+    [(c) => c === "gh", { code: 4, stderr: "gh auth login" }],
+  ]);
+  const out = await refresh({ terminal: "t1", home: t.home, claudeDir: t.dir, run: down, exists, sessionArgs: [SESSION], now: () => Date.parse("2026-11-09T10:05:00Z") });
+  assert.equal(out.stale, true);
+  assert.deepEqual(nums(out), nums(good), "the same rows, 205 kept as a neighbour of 204, nothing resurrected");
+  assert.deepEqual(byOf(out, 204), ["subagent:Writer"]);
 });

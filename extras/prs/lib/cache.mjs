@@ -4,7 +4,7 @@ import path from "node:path";
 import { readJson, writeAtomic } from "./util.mjs";
 
 // Bump when the scanner reads more or differently: the per-file results of an older scanner are dropped.
-export const SCAN_VERSION = 2;
+export const SCAN_VERSION = 4; // 3: `gh pr create` read only when run, URL from the last line; 4: record times kept
 const MAX_FILES = 6000;
 const KEEP_MS = 45 * 24 * 3600 * 1000;
 const TOUCH_MS = 24 * 3600 * 1000;
