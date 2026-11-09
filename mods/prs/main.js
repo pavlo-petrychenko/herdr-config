@@ -69,7 +69,9 @@ export default class Prs extends View {
     this.scroll = VirtualListScrollHandle.new();
     this.w = 400;
     const ui = this.readUi();
-    this.scope = ui.scope === "worktree" ? "worktree" : "agent";
+    this.saved = ui.scope === "worktree" ? "worktree" : "agent"; // the user's last click on a scope
+    this.scope = "agent"; // until the data says whether Worktree has anything (M.pickScope)
+    this.scopePending = true;
     this.showDone = Boolean(ui.showDone);
     this.cli = "herdr-prs";
     this.filter = null;
@@ -135,7 +137,7 @@ export default class Prs extends View {
     try { return JSON.parse(localStorage.getItem(UI_KEY) ?? "{}") ?? {}; } catch { return {}; }
   }
   saveUi() {
-    try { localStorage.setItem(UI_KEY, JSON.stringify({ scope: this.scope, showDone: this.showDone })); } catch {}
+    try { localStorage.setItem(UI_KEY, JSON.stringify({ scope: this.saved, showDone: this.showDone })); } catch {}
   }
 
   wantKeys() {
@@ -173,6 +175,8 @@ export default class Prs extends View {
     this.lastEnd = null;
     this.lastDiscover = null;
     this.force = true; // discover when the view opens for a terminal
+    this.scope = "agent";
+    this.scopePending = true; // the first data of this terminal picks the scope
     this.sel = null;
     this.file = null;
     this.preview = false;
@@ -222,6 +226,7 @@ export default class Prs extends View {
     this.data = parsed.data;
     this.byId = new Map(parsed.data.prs.map((p) => [M.idOf(p), p]));
     this.memo = null;
+    if (this.scopePending) { this.scopePending = false; this.scope = M.pickScope(parsed.data.prs, this.saved); this.filter = null; }
     if (this.filter && !M.creators(this.data.prs, this.scope, { showDone: this.showDone }).some((c) => c.key === this.filter)) this.filter = null;
     const order = this.order();
     this.select(order.includes(this.sel) ? this.sel : order[0] ?? null, cx);
@@ -364,6 +369,8 @@ export default class Prs extends View {
   setScope(s, cx) {
     if (!M.SCOPES.some((x) => x.key === s) || !this.data) return;
     this.scope = s;
+    this.saved = s;
+    this.scopePending = false; // an explicit choice stays
     this.filter = null;
     this.memo = null;
     this.saveUi();
@@ -638,8 +645,9 @@ export default class Prs extends View {
   emptyList(t) {
     const done = this.doneCount();
     const none = this.data.prs.length === 0;
-    const title = none ? "No PRs yet for this agent" : this.scope === "worktree" ? "No PRs from this worktree" : "No open PRs";
-    const hint = none ? "They show here once the agent opens one." : done > 0 ? `${plural(done, "done PR")} hidden.` : this.scope === "worktree" ? "The Agent scope has the agent's other work." : "";
+    const wt = this.scope === "worktree";
+    const title = wt ? M.worktreeEmptyText(this.data.worktree) : none ? "No PRs yet for this agent" : "No open PRs";
+    const hint = none && !wt ? "They show here once the agent opens one." : done > 0 ? `${plural(done, "done PR")} hidden.` : wt ? "The Agent scope has the agent's other work." : "";
     return v_flex().flex_1().items_center().justify_center().gap(6).p(20)
       .child(this.icon("pr", 22, t.dim))
       .child(div().text_size(12.5).text_color(t.muted).child(title))

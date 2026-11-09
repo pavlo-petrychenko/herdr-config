@@ -249,6 +249,20 @@ export function scopeCounts(prs) {
   return { worktree: open.filter((p) => inScope(p, "worktree")).length, agent: open.filter((p) => inScope(p, "agent")).length };
 }
 
+/**
+ * The scope the view opens on for a terminal. The saved choice (the user's last click) counts only while it
+ * fits: Worktree with no open or draft PR is empty, so the view opens on Agent instead. A later click on
+ * Worktree still works (the view does not call this again until the terminal changes).
+ */
+export function pickScope(prs, saved) {
+  return saved === "worktree" && scopeCounts(prs).worktree > 0 ? "worktree" : "agent";
+}
+
+/** What the Worktree scope says when it shows nothing: names the branch, or says the folder is no worktree. */
+export function worktreeEmptyText(worktree) {
+  return worktree?.branch ? `No open PR for branch ${worktree.branch}` : "This agent's folder is not a git worktree";
+}
+
 /** The filter chips of what the list shows (before the filter): [{ key, kind, label, tip, n }], agent first, then by count. */
 export function creators(prs, scope, opts = {}) {
   const g = groups(prs, { ...opts, scope, filter: null });

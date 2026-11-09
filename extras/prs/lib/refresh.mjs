@@ -22,6 +22,14 @@ const NO_STACK_MS = 60 * 60 * 1000; // after a "no stack fields" answer, do not 
 const MAX_REJECTED = 1000;
 const FULL_CHECK_MS = 60 * 60 * 1000; // merged and closed PRs are asked for again this often
 
+/** Whether `p` is `folder` or a folder below it. */
+export function insideFolder(p, folder) {
+  if (typeof p !== "string" || typeof folder !== "string" || !p || !folder) return false;
+  const norm = (x) => x.replace(/\/+$/, "");
+  const a = norm(p), b = norm(folder);
+  return a === b || a.startsWith(`${b}/`);
+}
+
 export const dataFile = (home, terminal) => path.join(home, "data/prs", `${safeName(terminal)}.json`);
 const discoverFile = (home, terminal) => path.join(cacheDir(home), "discover", `${safeName(terminal)}.json`);
 /** Key of a transcript claim judged not real: the session that made it and the PR it named. */
@@ -119,7 +127,7 @@ async function refreshNow(opts) {
   };
   for (const c of ev.created) {
     const repo = parsePrUrl(c.url)?.repo ?? (await repoOf(c.cwd));
-    if (repo) claim(repo, c.n, { kind: "created", by: c.by, ts: c.ts, session: c.session });
+    if (repo) claim(repo, c.n, { kind: "created", by: c.by, cwd: c.cwd ?? null, ts: c.ts, session: c.session });
   }
   for (const l of ev.links) claim(l.repo, l.n, { kind: "link", by: { kind: "agent" }, ts: l.ts, session: l.session });
 
@@ -215,6 +223,9 @@ async function refreshNow(opts) {
     let by = created;
     if (!by.length) by = real.length ? [{ kind: "agent" }] : branchBy.get(`${row.repo}|${row.head}`) ?? [];
     if (worktree?.repo === row.repo && wtBranches.includes(row.head) && !DEFAULT_BRANCHES.has(row.head)) by = mergeBy(by, [{ kind: "worktree" }]);
+    // The main agent made it while it worked in this worktree's folder: a coordinator opens no PR from its own
+    // branch, but the PRs it made from here belong to the worktree too. Subagents and workflows work elsewhere.
+    if (worktree?.path && real.some((c) => c.kind === "created" && c.by?.kind === "agent" && insideFolder(c.cwd, worktree.path))) by = mergeBy(by, [{ kind: "worktree" }]);
     row.by = mergeBy(by);
   }
   const linkedRows = linkRows(rows);
