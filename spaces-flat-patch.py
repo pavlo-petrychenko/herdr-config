@@ -420,8 +420,12 @@ def viewbar(root):
     kids[kids.index(main)] = stack
     # The second view: a column on the right edge, shown instead of Files/Changes (viewbar mod).
     panel, _ = find(body, lambda n: n.get("id") == "panel")
+    # It is a stack: the bar's own side view, and the blocks of providers that have a mod of their own
+    # (the PRs view); the bar picks the child with layout.select.
     side = {"id": "side", "type": "column", "hidden": True, "size": {"px": 400}, "min": 300, "max": 900, "children": [
-        {"id": "side-view", "type": "block", "content": {"mod": "viewbar", "props": {"role": "side"}}}]}
+        {"id": "side-stack", "type": "stack", "active": "side-view", "children": [
+            {"id": "side-view", "type": "block", "content": {"mod": "viewbar", "props": {"role": "side"}}},
+            {"id": "side-prs", "type": "block", "content": {"mod": "prs"}}]}]}
     kids.insert(kids.index(panel) if panel else len(kids), side)
     # The bar itself, between the tabs and the work area.
     work, _ = find(root, lambda n: body in n.get("children", []))

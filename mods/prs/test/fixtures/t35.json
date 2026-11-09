@@ -1,0 +1,348 @@
+{
+ "version": 1,
+ "at": "2026-11-09T10:44:30.774Z",
+ "terminal": "t35",
+ "stale": false,
+ "worktree": {
+  "path": "/Users/me/src/shop-feature",
+  "branch": "shop-feature",
+  "repo": "acme/shop"
+ },
+ "sessions": [
+  {
+   "sessionId": "93c07d9d-5fb6-468c-8e0f-ec4869389c1e",
+   "transcriptPath": "/Users/pavlopetricenko/.claude/projects/-Users-me-src-shop-feature/93c07d9d-5fb6-468c-8e0f-ec4869389c1e.jsonl",
+   "from": "live"
+  }
+ ],
+ "repos": [
+  "acme/infra",
+  "acme/shop"
+ ],
+ "prs": [
+  {
+   "repo": "acme/shop",
+   "number": 57514,
+   "title": "[Area A | Topic 6]: Change 4 (T-4)",
+   "url": "https://github.com/acme/shop/pull/57514",
+   "author": "pavlo-petrychenko",
+   "state": "merged",
+   "head": "feature-14",
+   "base": "master",
+   "headOid": "432064891bf1e3020965524cf29d595cbc593e44",
+   "createdAt": "2026-11-05T13:19:40Z",
+   "updatedAt": "2026-11-09T09:27:30Z",
+   "mergedAt": "2026-11-09T09:27:08Z",
+   "closedAt": "2026-11-09T09:27:08Z",
+   "additions": 282,
+   "deletions": 10,
+   "changedFiles": 11,
+   "review": "approved",
+   "mergeState": "UNKNOWN",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pass",
+    "pass": 17,
+    "fail": 0,
+    "pending": 0,
+    "skip": 129
+   },
+   "parent": null,
+   "stack": {
+    "id": "acme/shop#57519",
+    "native": true,
+    "position": 1
+   },
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 1"
+    }
+   ]
+  },
+  {
+   "repo": "acme/shop",
+   "number": 57518,
+   "title": "[Area H | Topic 7]: Change 5 (T-5)",
+   "url": "https://github.com/acme/shop/pull/57518",
+   "author": "pavlo-petrychenko",
+   "state": "merged",
+   "head": "feature-15",
+   "base": "feature-14",
+   "headOid": "b4136fe237a0ae8e4f5ca18e6c98d5fe9352a977",
+   "createdAt": "2026-11-05T13:29:47Z",
+   "updatedAt": "2026-11-09T09:27:30Z",
+   "mergedAt": "2026-11-09T09:27:09Z",
+   "closedAt": "2026-11-09T09:27:09Z",
+   "additions": 542,
+   "deletions": 82,
+   "changedFiles": 32,
+   "review": "approved",
+   "mergeState": "DIRTY",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "fail",
+    "pass": 17,
+    "fail": 7,
+    "pending": 0,
+    "skip": 132
+   },
+   "parent": 57514,
+   "stack": {
+    "id": "acme/shop#57519",
+    "native": true,
+    "position": 2
+   },
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 1"
+    }
+   ]
+  },
+  {
+   "repo": "acme/shop",
+   "number": 57540,
+   "title": "[Area H | Topic 5]: Change 6",
+   "url": "https://github.com/acme/shop/pull/57540",
+   "author": "pavlo-petrychenko",
+   "state": "merged",
+   "head": "feature-16",
+   "base": "feature-15",
+   "headOid": "c4fc50eb885d7043975b5515445e5f329b45fa19",
+   "createdAt": "2026-11-05T14:47:58Z",
+   "updatedAt": "2026-11-09T09:32:39Z",
+   "mergedAt": "2026-11-09T09:27:10Z",
+   "closedAt": "2026-11-09T09:27:10Z",
+   "additions": 786,
+   "deletions": 1,
+   "changedFiles": 7,
+   "review": "approved",
+   "mergeState": "DIRTY",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "fail",
+    "pass": 17,
+    "fail": 7,
+    "pending": 0,
+    "skip": 132
+   },
+   "parent": 57518,
+   "stack": {
+    "id": "acme/shop#57519",
+    "native": true,
+    "position": 3
+   },
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 2"
+    }
+   ]
+  },
+  {
+   "repo": "acme/shop",
+   "number": 57783,
+   "title": "[Area J | Topic 5]: Change 20",
+   "url": "https://github.com/acme/shop/pull/57783",
+   "author": "pavlo-petrychenko",
+   "state": "draft",
+   "head": "feature-22",
+   "base": "master",
+   "headOid": "03ca51c8a5a5d1de4146c4390de5e2db69724b48",
+   "createdAt": "2026-11-09T10:04:03Z",
+   "updatedAt": "2026-11-09T10:18:47Z",
+   "mergedAt": null,
+   "closedAt": null,
+   "additions": 645,
+   "deletions": 90,
+   "changedFiles": 39,
+   "review": "approved",
+   "mergeState": "CLEAN",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pass",
+    "pass": 17,
+    "fail": 0,
+    "pending": 0,
+    "skip": 123
+   },
+   "parent": null,
+   "stack": null,
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 4"
+    }
+   ]
+  },
+  {
+   "repo": "acme/shop",
+   "number": 57784,
+   "title": "[Area K | Topic 5]: Change 21",
+   "url": "https://github.com/acme/shop/pull/57784",
+   "author": "pavlo-petrychenko",
+   "state": "draft",
+   "head": "feature-21",
+   "base": "master",
+   "headOid": "2a27ca5343e1d7a8c8d185f5828a807c28e36344",
+   "createdAt": "2026-11-09T10:07:17Z",
+   "updatedAt": "2026-11-09T10:15:41Z",
+   "mergedAt": null,
+   "closedAt": null,
+   "additions": 362,
+   "deletions": 67,
+   "changedFiles": 25,
+   "review": "required",
+   "mergeState": "BLOCKED",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pending",
+    "pass": 18,
+    "fail": 0,
+    "pending": 1,
+    "skip": 125
+   },
+   "parent": null,
+   "stack": null,
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 5"
+    }
+   ]
+  },
+  {
+   "repo": "acme/infra",
+   "number": 1661,
+   "title": "[Area I | Topic 8]: Change 2 (T-7)",
+   "url": "https://github.com/acme/infra/pull/1661",
+   "author": "pavlo-petrychenko",
+   "state": "merged",
+   "head": "feature-19",
+   "base": "main",
+   "headOid": "296c3161f55ff5a7b0b82927593e8b11662e3b31",
+   "createdAt": "2026-11-06T08:31:36Z",
+   "updatedAt": "2026-11-09T09:33:21Z",
+   "mergedAt": "2026-11-09T09:31:12Z",
+   "closedAt": "2026-11-09T09:31:12Z",
+   "additions": 83,
+   "deletions": 0,
+   "changedFiles": 3,
+   "review": "approved",
+   "mergeState": "UNKNOWN",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pass",
+    "pass": 6,
+    "fail": 0,
+    "pending": 0,
+    "skip": 3
+   },
+   "parent": null,
+   "stack": null,
+   "by": [
+    {
+     "kind": "subagent",
+     "name": "Subagent 3"
+    }
+   ]
+  },
+  {
+   "repo": "acme/infra",
+   "number": 1653,
+   "title": "[Area I | Topic 9]: Change 1 (T-2)",
+   "url": "https://github.com/acme/infra/pull/1653",
+   "author": "pavlo-petrychenko",
+   "state": "closed",
+   "head": "feature-10",
+   "base": "main",
+   "headOid": "e0f2be4dd14c4ef615b8f724c92b44a9c71445a4",
+   "createdAt": "2026-11-05T10:52:06Z",
+   "updatedAt": "2026-11-05T13:10:22Z",
+   "mergedAt": null,
+   "closedAt": "2026-11-05T13:10:18Z",
+   "additions": 1,
+   "deletions": 0,
+   "changedFiles": 1,
+   "review": "required",
+   "mergeState": "DIRTY",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pass",
+    "pass": 6,
+    "fail": 0,
+    "pending": 0,
+    "skip": 3
+   },
+   "parent": null,
+   "stack": null,
+   "by": [
+    {
+     "kind": "agent"
+    }
+   ]
+  },
+  {
+   "repo": "acme/shop",
+   "number": 57480,
+   "title": "[Area L]: Change 3 (T-3)",
+   "url": "https://github.com/acme/shop/pull/57480",
+   "author": "pavlo-petrychenko",
+   "state": "merged",
+   "head": "feature-11",
+   "base": "master",
+   "headOid": "451d00b6586cebebf891bbf0cfa2f3029593ff45",
+   "createdAt": "2026-11-05T10:55:38Z",
+   "updatedAt": "2026-11-05T11:16:44Z",
+   "mergedAt": "2026-11-05T11:16:42Z",
+   "closedAt": "2026-11-05T11:16:42Z",
+   "additions": 8,
+   "deletions": 0,
+   "changedFiles": 1,
+   "review": "approved",
+   "mergeState": "UNKNOWN",
+   "conflicts": false,
+   "autoMerge": false,
+   "checks": {
+    "state": "pass",
+    "pass": 14,
+    "fail": 0,
+    "pending": 0,
+    "skip": 128
+   },
+   "parent": null,
+   "stack": null,
+   "by": [
+    {
+     "kind": "agent"
+    }
+   ]
+  }
+ ],
+ "count": 2,
+ "problems": 0,
+ "branches": [
+  {
+   "repo": "acme/shop",
+   "name": "shop-feature"
+  },
+  {
+   "repo": "acme/shop",
+   "name": "feature-12"
+  },
+  {
+   "repo": "acme/shop",
+   "name": "feature-13"
+  }
+ ],
+ "discoveredAt": "2026-11-09T10:43:59.693Z",
+ "errors": []
+}

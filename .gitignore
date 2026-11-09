@@ -20,10 +20,14 @@
 !/mods/agent-queue/
 !/mods/agent-usage/
 !/mods/file-viewer/
+!/mods/prs/
 !/mods/repo-worktree/
 !/mods/space-groups/
 !/mods/spaces-flat/
 !/mods/viewbar/
+
+# Per-machine setting of the PRs mod: { "cli": "/abs/path/to/herdr-prs" }.
+/mods/prs/config.json
 
 # Written by Herdr into each mod.
 **/gpui-kit.d.ts

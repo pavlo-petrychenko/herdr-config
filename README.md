@@ -11,16 +11,18 @@ My Herdr customizations. This repo is the Herdr home, `~/.config/herdr-app`.
   - `viewbar`: the bar under the tabs (Agent | Plan flip, panels for the second view) and the hotkeys map
   - `agent-usage`: usage bar for Claude and OpenCode
   - `file-viewer`: viewer pane for `herdr-show`
+  - `prs`: the PRs view (stacks, checks, files, diffs) for the agent in the focused tab; it runs `herdr-prs`. Optional `mods/prs/config.json` `{ "cli": "/abs/path/to/herdr-prs" }` (not in git). Tests: `node --test mods/prs/test/`
   - `space-groups`: sidebar groups
   - `spaces-flat`: patched copy of the shipped `spaces` mod
 - `layouts/main-flat.json`: patched copy of the shipped `main` layout
 - `keys.json`, `settings.json`, `repo-worktree.json`, `space-groups.json`: config
 - `spaces-flat-sync.sh`, `spaces-flat-patch.py`: re-make `spaces-flat` and `main-flat` after a Herdr update (the view bar, `main-stack` and the second view column are part of the patch)
 - `extras/`: files that run from outside the Herdr home. `install.sh` symlinks them into place:
-  - `extras/bin/herdr-show`, `extras/bin/herdr-status` → `~/.local/bin/`
+  - `extras/bin/herdr-show`, `extras/bin/herdr-status`, `extras/bin/herdr-prs` → `~/.local/bin/`
   - `extras/claude/hooks/herdr-status.mjs` → `~/.claude/hooks/`
   - `extras/claude/statusline-herdr.sh` → `~/.claude/`
   - `extras/hrt/start.sh` → `~/.hrt/`: second Herdr window for testing mods
+- `extras/prs/`: `herdr-prs`, a node command (no dependencies) that finds an agent's pull requests (Claude Code transcripts + GitHub through `gh`) and writes `data/prs/<terminal>.json` for the PRs view. Data format: `extras/prs/FORMAT.md`. Tests: `node --test extras/prs/test/`
 
 ## The view bar and plans
 

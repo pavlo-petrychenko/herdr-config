@@ -1,7 +1,7 @@
 // The view bar: a thin fixed-height bar under the tabs. One mod, three roles (props().role):
 //   bar          Left: Agent | Plan, the flip of the layout stack "main-stack" (the tab area and the
 //                plan-review mod; the same as cmd-shift-r, `viewbar.flip` in keys.json). Right: one
-//                button per panel the agent has (providers.js; none ship yet): each opens the second
+//                button per panel the agent has (providers.js): each opens the second
 //                view beside the main one, and clicking it again closes it.
 //                A button shows only when its thing exists: Agent when the focused tab has an agent,
 //                Plan when that agent has a plan. A shown view that loses its thing falls back
@@ -14,7 +14,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, panes, focused, layout, shared, setShared, run, theme, props, appHome, exec, readTextFile, watchFolder, openOverlay, keys, window, nextCommand } from "herdr";
-import { STACK, AGENT_VIEW, PLAN_VIEW, SIDE, PANEL, currentAgent, shownView, isOpen, hasFlip, available, fallbacks, rightEdge } from "./logic.js";
+import { STACK, AGENT_VIEW, PLAN_VIEW, SIDE, PANEL, currentAgent, shownView, isOpen, hasFlip, available, fallbacks, rightEdge, findNode } from "./logic.js";
 import { keyGroups } from "./keymap.js";
 import { POINTER_DIR, STATES, parsePointer, terminalOfFile, touchesPointers, planFor } from "./pointers.js";
 import { PROVIDERS } from "./providers.js";
@@ -22,6 +22,8 @@ import { PROVIDERS } from "./providers.js";
 const ICON = (name) => `mods/viewbar/icons/${name}.svg`;
 const VIEW_KEY = "plan-review.view"; // the stack side we last flipped to (the plan-review mod reads it too)
 const SIDE_KEY = "viewbar.side"; // the second view's kind, or null
+const SIDE_STACK = "side-stack"; // the side column's stack, when the layout has one: a provider's own block, or
+const SIDE_VIEW = "side-view"; // this bar's side view
 
 // Kept across reloads and shared by this mod's copies.
 const PLANS = (globalThis.__viewbarPlans ??= { map: new Map(), raw: new Map(), loaded: false }); // terminal -> pointer
@@ -70,10 +72,16 @@ function flipTo(view, cx = null) {
   if (pane) run("pane.focus", { pane });
 }
 
-function openSide(kind, w) {
+// A provider with its own mod (`child`: its block in the side column's stack "side-stack") shows
+// that block, and gets the keyboard (`focus`: its command), now and after the frame that shows it.
+// A layout without that stack (an older one) shows this bar's side view, as before.
+function openSide(kind, w, cx = null) {
   if (w.panelOpen) run("layout.hide", { id: PANEL });
   setShared(SIDE_KEY, kind);
+  const p = PROVIDERS.find((x) => x.kind === kind);
+  if (findNode(w.tree, SIDE_STACK)) run("layout.select", { stack: SIDE_STACK, child: p?.child ?? SIDE_VIEW });
   if (!w.sideOpen) run("layout.show", { id: SIDE });
+  if (p?.focus && findNode(w.tree, SIDE_STACK)) { run(p.focus); if (cx) cx.timer.after(150, () => run(p.focus)); }
 }
 
 function closeSide() {
@@ -104,7 +112,7 @@ export default class ViewBar extends View {
           else if (!w.flip) { /* this layout has no flip */ }
           else if ((c === "plan" || (c === "flip" && w.view !== PLAN_VIEW)) && w.plan) flipTo(PLAN_VIEW, cx);
           else if (c === "agent" || c === "flip") flipTo(AGENT_VIEW, cx);
-          else if (w.things.some((x) => x.kind === c)) w.active === c ? closeSide() : openSide(c, w);
+          else if (w.things.some((x) => x.kind === c)) w.active === c ? closeSide() : openSide(c, w, cx);
           cx.notify();
         }
       });
@@ -193,7 +201,7 @@ export default class ViewBar extends View {
       return h_flex().id(`vb-${thing.kind}`).h(26).px(7).gap(5).items_center().rounded(7).cursor_pointer()
         .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
         .tooltip(on ? `${thing.tip} · click to close` : thing.tip)
-        .on_click((_e, cx) => { cx.stop_propagation(); on ? closeSide() : openSide(thing.kind, world()); })
+        .on_click((_e, cx) => { cx.stop_propagation(); on ? closeSide() : openSide(thing.kind, world(), cx); })
         .child(svg(thing.icon).size(15).flex_none().text_color(on ? t.foreground : t.muted))
         .when(Boolean(thing.badge.text), (el) => el.child(div().flex_none().text_size(10.5).font_semibold().text_color(t[thing.badge.tone] ?? t.dim).child(thing.badge.text)));
     });

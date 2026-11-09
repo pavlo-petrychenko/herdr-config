@@ -11,6 +11,7 @@ link() {
   mv -f "$dst.tmp.$$" "$dst"
   echo "linked $dst"
 }
+link bin/herdr-prs "$HOME/.local/bin/herdr-prs"
 link bin/herdr-show "$HOME/.local/bin/herdr-show"
 link bin/herdr-status "$HOME/.local/bin/herdr-status"
 link claude/hooks/herdr-status.mjs "$HOME/.claude/hooks/herdr-status.mjs"

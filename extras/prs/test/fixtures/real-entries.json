@@ -1,0 +1,97 @@
+{
+ "data": {
+  "repository": {
+   "e57745": {
+    "stack": {
+     "number": 57745,
+     "entries": {
+      "totalCount": 9,
+      "nodes": [
+       {
+        "position": 1,
+        "pullRequest": {
+         "number": 57736
+        }
+       },
+       {
+        "position": 2,
+        "pullRequest": {
+         "number": 57737
+        }
+       },
+       {
+        "position": 3,
+        "pullRequest": {
+         "number": 57738
+        }
+       },
+       {
+        "position": 4,
+        "pullRequest": {
+         "number": 57739
+        }
+       },
+       {
+        "position": 5,
+        "pullRequest": {
+         "number": 57740
+        }
+       },
+       {
+        "position": 6,
+        "pullRequest": {
+         "number": 57741
+        }
+       },
+       {
+        "position": 7,
+        "pullRequest": {
+         "number": 57742
+        }
+       },
+       {
+        "position": 8,
+        "pullRequest": {
+         "number": 57743
+        }
+       },
+       {
+        "position": 9,
+        "pullRequest": {
+         "number": 57744
+        }
+       }
+      ]
+     }
+    }
+   },
+   "e57687": {
+    "stack": {
+     "number": 57687,
+     "entries": {
+      "totalCount": 2,
+      "nodes": [
+       {
+        "position": 1,
+        "pullRequest": {
+         "number": 57685
+        }
+       },
+       {
+        "position": 2,
+        "pullRequest": {
+         "number": 57686
+        }
+       }
+      ]
+     }
+    }
+   }
+  },
+  "rateLimit": {
+   "cost": 1,
+   "remaining": 4784,
+   "resetAt": "2026-11-09T11:14:45Z"
+  }
+ }
+}
