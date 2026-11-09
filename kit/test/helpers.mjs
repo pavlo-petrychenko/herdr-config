@@ -17,7 +17,8 @@ export const DEFAULT_KEYS = {
 };
 
 /**
- * A temporary world: { root, home, state, fakeState, bin, env }.
+ * A temporary world: { root, home, state, fakeState, bin, links, claude, env }.
+ * bin: the fake PATH; links: the kit's --bin-dir; claude: the kit's --claude-dir (absent until needed).
  * programs: which programs exist on the fake PATH (herdr-app always does).
  */
 export function world({ programs = ["python3", "git", "gh", "claude"], window = true } = {}) {
@@ -26,6 +27,8 @@ export function world({ programs = ["python3", "git", "gh", "claude"], window = 
   const state = path.join(root, "kit-state");
   const fakeState = path.join(root, "fake");
   const bin = path.join(root, "bin");
+  const links = path.join(root, "links");
+  const claude = path.join(root, "claude");
   for (const d of [home, fakeState, bin, path.join(home, "mods", "spaces"), path.join(home, "layouts")]) fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(home, "installed.json"), JSON.stringify({ spaces: {}, agents: {}, "layout:main": {} }));
   fs.writeFileSync(path.join(home, "keys.json"), JSON.stringify(DEFAULT_KEYS, null, 2) + "\n");
@@ -45,23 +48,26 @@ export function world({ programs = ["python3", "git", "gh", "claude"], window = 
     else shim(p, "exit 0");
   }
   const env = { HOME: root, PATH: bin, FAKE_STATE: fakeState };
-  return { root, home, state, fakeState, bin, env };
+  return { root, home, state, fakeState, bin, links, claude, env };
 }
 
-/** Runs the kit in a world. Returns { code, text }. */
-export async function kit(w, args, { answers = null, patchFail = false } = {}) {
+/** Runs the kit in a world. Returns { code, text, asked } (asked: the questions, one per line). */
+export async function kit(w, args, { answers = null, patchFail = false, version } = {}) {
   const lines = [];
+  const asked = [];
   const queue = answers ? [...answers] : null;
-  const code = await main([...args, "--home", w.home, "--state-dir", w.state], {
+  const code = await main([...args, "--home", w.home, "--state-dir", w.state, "--bin-dir", w.links, "--claude-dir", w.claude], {
     env: { ...w.env, ...(patchFail ? { FAKE_PATCH_FAIL: "1" } : {}) },
     out: (s = "") => lines.push(s),
-    ask: async () => {
+    ask: async (q) => {
+      asked.push(q);
       if (!queue) throw new Error("the kit asked a question in --yes mode");
       return queue.length ? queue.shift() : "";
     },
     patchScript: FAKE_PATCH,
+    version,
   });
-  return { code, text: lines.join("\n") };
+  return { code, text: lines.join("\n"), asked: asked.join("\n") };
 }
 
 /** { "<path>": sha256 } of every file in a folder. */

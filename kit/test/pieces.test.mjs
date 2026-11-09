@@ -5,11 +5,11 @@ import { test } from "node:test";
 import { choosePieces } from "../pieces.mjs";
 import { kit, world } from "./helpers.mjs";
 
-const all = { window: { ok: true }, node20: { ok: true }, git: { ok: true }, python3: { ok: true }, gh: { ok: true }, "agent-plan-review": { ok: true } };
+const all = { window: { ok: true }, node20: { ok: true }, git: { ok: true }, python3: { ok: true }, gh: { ok: true }, claude: { ok: true }, jq: { ok: true }, "agent-plan-review": { ok: true } };
 
 test("a missing program switches off only the pieces that need it, and those built on them", () => {
   const { on, off } = choosePieces({ ...all, python3: { ok: false, why: "Python 3 was not found" } });
-  assert.deepEqual(on, ["prs", "repo-worktree", "file-viewer", "plan"]);
+  assert.deepEqual(on, ["prs", "repo-worktree", "file-viewer", "statuses", "plan"]);
   assert.deepEqual(off, [
     { id: "core", why: "Python 3 was not found" },
     { id: "viewbar", why: "needs the Flat sidebar piece (core)" },

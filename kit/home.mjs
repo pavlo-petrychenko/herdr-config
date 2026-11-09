@@ -12,6 +12,16 @@ export function resolveStateDir(flag, env) {
   return path.resolve(expand(flag ?? path.join(os.homedir(), ".local", "share", "herdr-kit")));
 }
 
+/** Where the tool links go: --bin-dir, else ~/.local/bin. */
+export function resolveBinDir(flag) {
+  return path.resolve(expand(flag ?? path.join(os.homedir(), ".local", "bin")));
+}
+
+/** Claude Code's folder: --claude-dir, else $CLAUDE_CONFIG_DIR, else ~/.claude. */
+export function resolveClaudeDir(flag, env) {
+  return path.resolve(expand(flag ?? (env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), ".claude"))));
+}
+
 /** Runs herdr-app for this home. */
 export function herdrApp(ctx, args) {
   return run("herdr-app", args, { env: { ...ctx.env, HERDR_APP_HOME: ctx.home } });
@@ -55,6 +65,7 @@ export function checkPrograms(ctx, found) {
     python3: { ok: has("python3") && run("python3", ["--version"], { env }).code === 0, why: "Python 3 was not found" },
     gh: { ok: false, why: "the GitHub CLI (gh) was not found" },
     claude: { ok: has("claude"), why: "Claude Code (claude) was not found" },
+    jq: { ok: has("jq"), why: "jq was not found" },
     "agent-plan-review": { ok: has("agent-plan-review"), why: "agent-plan-review was not found" },
   };
   if (has("gh")) {

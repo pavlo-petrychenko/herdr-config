@@ -8,9 +8,12 @@ import { applyKeys, planKeys, removeKeys, wantedKeys } from "./keys.mjs";
 import { FLAT_LAYOUT, FLAT_MOD, HERDR_WRITTEN, buildFlat, flatFiles } from "./layout.mjs";
 import { backupFile } from "./manifest.mjs";
 import { byId } from "./pieces.mjs";
-import { hashFile, readJson, run, stamp, walk, writeAtomic, writeJson } from "./util.mjs";
+import { toolPath } from "./tools.mjs";
+import { hashFile, readJson, run, sha, stamp, walk, writeAtomic, writeJson } from "./util.mjs";
 
 const KEYS = "keys.json";
+/** Made by the kit for this machine (the path of herdr-prs), not copied from the package. */
+const PRS_CONFIG = "mods/prs/config.json";
 
 /** The files of a mod in this package, as paths in the home ("mods/x/main.js"); no tests. */
 export function modFiles(pkgDir, name) {
@@ -34,7 +37,7 @@ export function spaceGroupsConfig(pkgDir, workFolders = []) {
 /**
  * Decides what setup or update would do. Changes nothing.
  * ids: pieces to install (all of them: the new ones and those already in the manifest).
- * Returns { conflicts, writes, keep, remove, config, build, buildSkip, keys, planView, mods }.
+ * Returns { conflicts, writes, keep, remove, config, generated, build, buildSkip, keys, planView, mods }.
  */
 export function plan(ctx, ids, manifest) {
   const home = ctx.home;
@@ -66,12 +69,23 @@ export function plan(ctx, ids, manifest) {
     }
     // Files an older version had and this one does not.
     for (const rel of Object.keys(m.files)) {
-      if (!rel.startsWith(`mods/${name}/`) || files.includes(rel)) continue;
+      if (!rel.startsWith(`mods/${name}/`) || files.includes(rel) || rel === PRS_CONFIG) continue;
       if (hashIn(home, rel) === m.files[rel]) remove.push(rel);
     }
   }
 
   const config = pick(ids, "config").filter((c) => !fs.existsSync(path.join(home, c)));
+
+  // Files made for this machine. The PRs view runs herdr-prs by the path in its config.json, because
+  // Herdr started from the Dock has a short PATH. Written when absent or still the kit's; else kept.
+  const generated = [];
+  if (ids.includes("prs")) {
+    const rel = PRS_CONFIG;
+    const data = JSON.stringify({ cli: toolPath(ctx, "bin/herdr-prs") }, null, 2) + "\n";
+    const now = hashIn(home, rel);
+    if (now === null || (now !== sha(data) && m.files[rel] === now)) generated.push({ rel, data });
+    else if (now !== sha(data)) keep.push(rel);
+  }
 
   // The flat sidebar: rebuilt only when every file of it is still as the kit made it.
   let build = has(ids, "build");
@@ -85,7 +99,7 @@ export function plan(ctx, ids, manifest) {
   const current = readJson(path.join(home, KEYS), {});
   const keys = planKeys(current, wantedKeys(kitKeys, pick(ids, "keys")));
 
-  return { conflicts, writes, keep, remove, config, build, buildSkip, keys, planView: has(ids, "planView"), mods, ids };
+  return { conflicts, writes, keep, remove, config, generated, build, buildSkip, keys, planView: has(ids, "planView"), mods, ids };
 }
 
 /**
@@ -128,6 +142,12 @@ export function apply(ctx, p, manifest, answers = {}) {
       : fs.readFileSync(path.join(ctx.pkgDir, "kit", "defaults", c));
     writeAtomic(path.join(home, c), data);
     m.files[c] = hashIn(home, c);
+  }
+
+  for (const g of p.generated) {
+    madeDir(g.rel);
+    writeAtomic(path.join(home, g.rel), g.data);
+    m.files[g.rel] = hashIn(home, g.rel);
   }
 
   // 3. The Plan view (before the flat sidebar, so main-flat keeps its plan block).

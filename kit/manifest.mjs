@@ -14,7 +14,18 @@
 //     backups: [{ file, backup }],        every backup the kit made (absolute paths)
 //     plan: { installedMod, enabled } | null   what `agent-plan-review herdr ...` changed
 //   }
-//   (later steps add `claude` and `tools` blocks)
+//   tools: {                              programs in the state folder (tools.mjs); null without them
+//     version, previous, versions: [v],   <state-dir>/<v>/ folders the kit made; `current` points to version
+//     files: { "<path in the version folder>": sha256 },
+//     links: [{ link, target }], binDir, madeBinDir
+//   } | null
+//   claude: {                             hooks and status line in settings.json (claude.mjs); null without
+//     file, created, madeDir,             the kit made settings.json / its folder
+//     backup, after, restorable, backups, first backup, hash after the kit wrote it, whether the backup
+//                                         can go back whole, and every backup (absolute paths)
+//     hooks: [{ event, matcher, command }],
+//     statusLine: { command, previous } | null
+//   } | null
 // }
 import fs from "node:fs";
 import path from "node:path";
@@ -42,6 +53,7 @@ export function newManifest(version, home) {
       keys: { added: [], backup: null, after: null, restorable: false },
       backups: [], plan: null,
     },
+    tools: null, claude: null,
   };
 }
 

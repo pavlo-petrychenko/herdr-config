@@ -15,13 +15,16 @@ test("current agent: the focused one, else the last focused in the tab, else the
 });
 
 test("layout: the stack's shown side, the flip, and open columns", () => {
-  const tree = { id: "root", children: [{ id: "main-stack", active: "plan" }, { id: "side", hidden: true }, { id: "panel" }] };
+  const tree = { id: "root", children: [{ id: "main-stack", active: "plan", children: [{ id: "main" }, { id: "plan" }] }, { id: "side", hidden: true }, { id: "panel" }] };
   assert.equal(shownView(tree, null), "plan");
   assert.equal(shownView({ id: "root" }, "plan"), "plan");
   assert.equal(shownView(tree, "main"), "main", "what we flipped to wins over the file");
   assert.equal(shownView({ id: "root" }, undefined), "main");
   assert.equal(hasFlip(tree), true);
   assert.equal(hasFlip({ id: "root", children: [{ id: "main" }] }), false, "a layout without the stack has no flip");
+  const trimmed = { id: "root", children: [{ id: "main-stack", active: "main", children: [{ id: "main" }] }] };
+  assert.equal(hasFlip(trimmed), false, "a stack without the plan block (no plan view installed) has no flip: nothing to flip to");
+  assert.equal(shownView(trimmed, null), "main");
   assert.equal(isOpen(tree, "side"), false);
   assert.equal(isOpen(tree, "panel"), true);
   assert.equal(isOpen(tree, "nope"), false);

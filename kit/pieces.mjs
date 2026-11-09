@@ -1,8 +1,9 @@
 // The pieces a person can pick (plan page "what-it-installs").
 //
-// A piece holds one block of actions per kind. Step 1 has only `herdr` (files in the Herdr home);
-// later steps add `claude` (hooks in ~/.claude/settings.json) and `tools` (programs in
-// ~/.local/share/herdr-kit). Each kind is handled by its own module (see KINDS in cli.mjs).
+// A piece holds one block of actions per kind. Each kind is handled by its own module:
+//   herdr  -> herdr.mjs   files in the Herdr home
+//   tools  -> tools.mjs   programs kept in <state-dir>/<version>/, linked from <bin-dir>
+//   claude -> claude.mjs  hooks (and the status line) in <claude-dir>/settings.json
 //
 //   needs:    programs (see checkPrograms in home.mjs); a missing one switches the piece off
 //   requires: other pieces it builds on
@@ -12,6 +13,9 @@
 //   herdr.keys:   [section, key] pairs from kit/keys.json
 //   herdr.data:   folders under <home>/data/ the mods write (removed only by `uninstall --purge`)
 //   herdr.planView: run `agent-plan-review herdr enable` and `herdr install`
+//   tools.files:  paths under extras/ copied to <state-dir>/<version>/ (a folder is copied whole)
+//   tools.links:  program names linked in <bin-dir> to <state-dir>/current/bin/<name>
+//   claude.hooks: add the Herdr status hooks to settings.json (the status line is a wizard question)
 
 export const PIECES = [
   {
@@ -39,9 +43,10 @@ export const PIECES = [
   {
     id: "prs",
     title: "PRs view",
-    about: "the pull requests of the agent in the focused tab (the herdr-prs tool comes later)",
+    about: "the pull requests of the agent in the focused tab, and the herdr-prs tool",
     needs: ["node20", "gh"],
     herdr: { mods: ["prs"], data: ["prs"] },
+    tools: { files: ["bin/herdr-prs", "prs"], links: ["herdr-prs"] },
   },
   {
     id: "repo-worktree",
@@ -55,6 +60,19 @@ export const PIECES = [
     title: "File viewer",
     about: "a read-only viewer pane for files an agent shows you",
     herdr: { mods: ["file-viewer"], data: ["file-viewer"] },
+    tools: { files: ["bin/herdr-show"], links: ["herdr-show"] },
+  },
+  {
+    id: "statuses",
+    title: "Agent statuses",
+    about: "Claude Code hooks and the herdr-status tool, so the queue and the PRs view know what each agent needs",
+    needs: ["claude"],
+    herdr: { data: ["agent-status", "agent-sessions"] },
+    tools: {
+      files: ["bin/herdr-status", "claude/hooks/herdr-status.mjs", "claude/statusline-herdr.sh"],
+      links: ["herdr-status"],
+    },
+    claude: { hooks: true },
   },
   {
     id: "plan",

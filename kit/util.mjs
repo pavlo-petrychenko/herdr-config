@@ -78,3 +78,25 @@ export const writeJson = (p, v) => writeAtomic(p, JSON.stringify(v, null, 2) + "
 export function deepEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+
+/** Whether a folder is one of the folders in PATH. */
+export function onPath(dir, env = process.env) {
+  const want = real(dir);
+  return (env.PATH ?? "").split(path.delimiter).some((d) => d && real(d) === want);
+}
+
+/** Makes a symlink in one step: a temporary link, then a rename over the old one. */
+export function setSymlink(target, link) {
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  const tmp = `${link}.herdr-kit-tmp-${process.pid}`;
+  fs.rmSync(tmp, { force: true });
+  fs.symlinkSync(target, tmp);
+  fs.renameSync(tmp, link);
+}
+
+/** lstat, or null when there is nothing at the path. */
+export function lstat(p) {
+  try { return fs.lstatSync(p); } catch { return null; }
+}
