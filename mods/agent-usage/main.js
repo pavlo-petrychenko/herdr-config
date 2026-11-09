@@ -60,11 +60,16 @@ export default class AgentUsage extends View {
     this.go = GO;
     this.handle = cx.focus_handle();
     // Claude: on every write of its file (each reply), and every 30 s so resets show.
+    // One watch at a time: a watch cannot be cancelled, so the next loop waits on the same one
+    // until it fires (a new watch per loop leaked one host task every 30 s until the window's
+    // 1024 limit broke every mod).
     cx.spawn(async (cx) => {
+      let watch = null;
       for (;;) {
         this.claude = await readClaude();
         cx.notify();
-        await Promise.race([watchFolder(`${appHome()}/data/agent-usage`).catch(() => sleep(cx, 30000)), sleep(cx, 30000)]);
+        watch ??= watchFolder(`${appHome()}/data/agent-usage`).catch(() => sleep(cx, 30000)).then(() => { watch = null; });
+        await Promise.race([watch, sleep(cx, 30000)]);
       }
     });
     // OpenCode: its database once a minute, the Go limits every 5 minutes (the bar only while
