@@ -10,6 +10,9 @@
 //   herdr-status.mjs hook <event>           Claude Code hooks (stdin: the hook's JSON)
 //     SessionStart      a new session in this terminal: forget the last session's status
 //                       (not after a compaction: that is the same session)
+//                       Also appends {sessionId, transcriptPath, cwd, source, at} to
+//                       <home>/data/agent-sessions/<terminal>.jsonl (which session ran in which
+//                       terminal; files older than 30 days are pruned). Not after a compaction.
 //     SessionEnd        the session is gone: forget its status
 //     UserPromptSubmit  the person answered: forget the status
 //     PreToolUse        (AskUserQuestion) keep the question's text: kind answer
@@ -91,6 +94,27 @@ function classify(reply) {
   return null;
 }
 
+// Which Claude Code session runs in this terminal: one JSON line per session start.
+// Never throws: this must not block or fail a session.
+function rememberSession(input) {
+  try {
+    if (!terminal || input.source === "compact") return;
+    const dir = path.join(home, "data/agent-sessions");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, `${terminal.replace(/[^\w.-]/g, "_")}.jsonl`);
+    let last = null;
+    try { last = JSON.parse(fs.readFileSync(f, "utf8").trimEnd().split("\n").pop()); } catch {}
+    if (!(last && last.sessionId === input.session_id && last.source === input.source)) {
+      const entry = { sessionId: input.session_id, transcriptPath: input.transcript_path, cwd: input.cwd, source: input.source, at: new Date().toISOString() };
+      fs.appendFileSync(f, `${JSON.stringify(entry)}\n`);
+    }
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    for (const name of fs.readdirSync(dir)) {
+      try { const p = path.join(dir, name); if (fs.statSync(p).mtimeMs < cutoff) fs.unlinkSync(p); } catch {}
+    }
+  } catch {}
+}
+
 function stdin() { try { return JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch { return {}; } }
 
 function main(argv) {
@@ -98,7 +122,10 @@ function main(argv) {
   if (cmd === "hook") {
     if (!terminal || process.env.HERDR_STATUS_CHILD) return;
     const input = stdin();
-    if (arg === "SessionStart") return input.source === "compact" ? undefined : clear();
+    if (arg === "SessionStart") {
+      rememberSession(input);
+      return input.source === "compact" ? undefined : clear();
+    }
     if (arg === "SessionEnd" || arg === "UserPromptSubmit") return clear();
     if (arg === "PreToolUse") {
       if (/plan_review_check$/.test(input.tool_name ?? "")) return write("review", PLAN_WAITS, "plan-review");
