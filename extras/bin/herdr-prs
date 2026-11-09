@@ -1,0 +1,21 @@
+#!/bin/sh
+# herdr-prs: finds the pull requests of the agent in a Herdr terminal (extras/prs/).
+#   herdr-prs refresh <terminal> [--discover] [--session <id>]... [--cwd <path>] [--print]
+#   herdr-prs detail <owner/repo> <number> <body|checks|files|diff|threads>
+# Herdr runs jobs with PATH=/usr/bin:/bin:/usr/sbin:/sbin, so node, gh and hc are looked for in the
+# usual places too (appended: a PATH that has them keeps its own). ~/.local/bin/herdr-prs is a symlink
+# to this file; the repo is found by following it.
+self=$0
+while [ -L "$self" ]; do
+  dir=$(cd "$(dirname "$self")" && pwd)
+  link=$(readlink "$self")
+  case $link in /*) self=$link ;; *) self=$dir/$link ;; esac
+done
+here=$(cd "$(dirname "$self")" && pwd)
+PATH="${PATH:-/usr/bin:/bin}:$HOME/.local/share/fnm/aliases/default/bin:$HOME/.volta/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin"
+export PATH
+if ! command -v node >/dev/null 2>&1; then
+  echo "herdr-prs: node not found (looked in PATH, fnm, volta, /opt/homebrew/bin, /usr/local/bin)" >&2
+  exit 127
+fi
+exec node "$here/../prs/cli.mjs" "$@"

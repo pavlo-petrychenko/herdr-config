@@ -17,10 +17,11 @@ My Herdr customizations. This repo is the Herdr home, `~/.config/herdr-app`.
 - `keys.json`, `settings.json`, `repo-worktree.json`, `space-groups.json`: config
 - `spaces-flat-sync.sh`, `spaces-flat-patch.py`: re-make `spaces-flat` and `main-flat` after a Herdr update (the view bar, `main-stack` and the second view column are part of the patch)
 - `extras/`: files that run from outside the Herdr home. `install.sh` symlinks them into place:
-  - `extras/bin/herdr-show`, `extras/bin/herdr-status` → `~/.local/bin/`
+  - `extras/bin/herdr-show`, `extras/bin/herdr-status`, `extras/bin/herdr-prs` → `~/.local/bin/`
   - `extras/claude/hooks/herdr-status.mjs` → `~/.claude/hooks/`
   - `extras/claude/statusline-herdr.sh` → `~/.claude/`
   - `extras/hrt/start.sh` → `~/.hrt/`: second Herdr window for testing mods
+- `extras/prs/`: `herdr-prs`, a node command (no dependencies) that finds an agent's pull requests (Claude Code transcripts + GitHub through `gh`) and writes `data/prs/<terminal>.json` for the PRs view. Data format: `extras/prs/FORMAT.md`. Tests: `node --test extras/prs/test/`
 
 ## The view bar and plans
 
