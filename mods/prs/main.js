@@ -332,8 +332,13 @@ export default class Prs extends View {
 
   // ---- the list --------------------------------------------------------------------------------------
 
+  // With nothing open in this scope, the done PRs are all there is: show them instead of an empty list
+  // (an agent whose PRs are all merged). `autoDone` then hides the "Show done" toggle.
   groups() {
-    return M.groups(this.data.prs, { scope: this.scope, filter: this.filter, showDone: this.showDone, expanded: this.expanded });
+    const opts = { scope: this.scope, filter: this.filter, expanded: this.expanded };
+    const g = M.groups(this.data.prs, { ...opts, showDone: this.showDone });
+    this.autoDone = !this.showDone && g.live.length === 0 && g.doneCount > 0;
+    return this.autoDone ? M.groups(this.data.prs, { ...opts, showDone: true }) : g;
   }
 
   items() {
@@ -740,7 +745,7 @@ export default class Prs extends View {
     const n = this.doneCount();
     const status = this.refreshing ? "Refreshing…" : this.data ? M.updatedLabel(this.data.at) : "";
     return h_flex().h(28).flex_none().px(8).gap(8).items_center().border_t(1).border_color(t.border).overflow_hidden()
-      .children(this.data && (n > 0 || this.showDone) ? [h_flex().id("prs-done").h(20).px(6).gap(5).flex_none().items_center().rounded(5).cursor_pointer()
+      .children(this.data && !this.autoDone && (n > 0 || this.showDone) ? [h_flex().id("prs-done").h(20).px(6).gap(5).flex_none().items_center().rounded(5).cursor_pointer()
         .text_color(this.showDone ? t.foreground : t.muted).when(this.showDone, (el) => el.bg(t.selected)).when(!this.showDone, (el) => el.hover((s) => s.bg(t.hover)))
         .tooltip(this.showDone ? "Hide merged and closed PRs (d)" : "Show merged and closed PRs (d)")
         .on_click((_e, cx) => { this.handle.focus(); this.toggleDone(cx); cx.notify(); })
