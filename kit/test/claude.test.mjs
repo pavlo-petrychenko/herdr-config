@@ -217,7 +217,7 @@ test("SessionStart: the installed hook gives the agent the herdr-status instruct
 
   assert.equal(hook({}).stdout, "", "outside Herdr: nothing");
   assert.equal(hook({ HC_TERMINAL_ID: "t9", HERDR_STATUS_NO_CONTEXT: "1" }).stdout, "", "switched off");
-  assert.equal(hook({ HC_TERMINAL_ID: "t9" }, "compact").stdout, "", "not after a compaction");
+  assert.match(hook({ HC_TERMINAL_ID: "t9" }, "compact").stdout, /additionalContext/, "again after a compaction");
   assert.equal(hook({ HC_TERMINAL_ID: "t9", HERDR_STATUS_CHILD: "1" }).stdout, "", "not in the classifier's own run");
 });
 

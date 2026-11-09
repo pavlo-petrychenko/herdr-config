@@ -94,10 +94,10 @@ test("startup prints hook JSON with the herdr-status instruction as additionalCo
   assert.ok(text.length < 800, "short");
 });
 
-test("resume and clear print it too; compact, no terminal and HERDR_STATUS_NO_CONTEXT print nothing", () => {
+test("resume, clear and compact print it too; no terminal and HERDR_STATUS_NO_CONTEXT print nothing", () => {
   assert.match(run(tmp(), ev("resume")), /additionalContext/);
   assert.match(run(tmp(), ev("clear")), /additionalContext/);
-  assert.equal(run(tmp(), ev("compact")), "");
+  assert.match(run(tmp(), ev("compact")), /additionalContext/);
   assert.equal(run(tmp(), ev("startup"), null), "");
   assert.equal(run(tmp(), ev("startup"), "t1", { HERDR_STATUS_NO_CONTEXT: "1" }), "");
   assert.equal(run(tmp(), ev("startup"), "t1", { HERDR_STATUS_CHILD: "1" }), "");

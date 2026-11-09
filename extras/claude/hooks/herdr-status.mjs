@@ -11,8 +11,8 @@
 //     SessionStart      a new session in this terminal: forget the last session's status
 //                       (not after a compaction: that is the same session)
 //                       Also prints hook JSON with additionalContext: the instruction to end each
-//                       turn with `herdr-status` (so no CLAUDE.md edit is needed). Not after a
-//                       compaction; not with HERDR_STATUS_NO_CONTEXT=1 (when CLAUDE.md says it already).
+//                       turn with `herdr-status` (so no CLAUDE.md edit is needed), after a compaction
+//                       too; not with HERDR_STATUS_NO_CONTEXT=1 (when CLAUDE.md says it already).
 //                       Also appends {sessionId, transcriptPath, cwd, source, at} to
 //                       <home>/data/agent-sessions/<terminal>.jsonl (which session ran in which
 //                       terminal; files older than 30 days are pruned). Not after a compaction.
@@ -143,8 +143,9 @@ function main(argv) {
     const input = stdin();
     if (arg === "SessionStart") {
       rememberSession(input);
-      if (input.source === "compact") return;
-      clear();
+      // After a compaction it is the same session: keep its status, but say the rule again
+      // (the summary may have dropped it).
+      if (input.source !== "compact") clear();
       if (!process.env.HERDR_STATUS_NO_CONTEXT) {
         console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: CONTEXT } }));
       }
