@@ -43,8 +43,9 @@ export const PIECES = [
   {
     id: "prs",
     title: "PRs view",
-    about: "the pull requests of the agent in the focused tab, and the herdr-prs tool",
+    about: "the pull requests of the agent in the focused tab, and the herdr-prs tool (opened from the view bar)",
     needs: ["node20", "gh"],
+    requires: ["viewbar"],
     herdr: { mods: ["prs"], data: ["prs"] },
     tools: { files: ["bin/herdr-prs", "prs"], links: ["herdr-prs"] },
   },

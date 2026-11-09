@@ -9,10 +9,11 @@ const all = { window: { ok: true }, node20: { ok: true }, git: { ok: true }, pyt
 
 test("a missing program switches off only the pieces that need it, and those built on them", () => {
   const { on, off } = choosePieces({ ...all, python3: { ok: false, why: "Python 3 was not found" } });
-  assert.deepEqual(on, ["prs", "repo-worktree", "file-viewer", "statuses", "plan"]);
+  assert.deepEqual(on, ["repo-worktree", "file-viewer", "statuses", "plan"]);
   assert.deepEqual(off, [
     { id: "core", why: "Python 3 was not found" },
     { id: "viewbar", why: "needs the Flat sidebar piece (core)" },
+    { id: "prs", why: "needs the View bar piece (viewbar)" },
   ]);
 });
 
@@ -39,6 +40,8 @@ test("no Herdr window: the flat sidebar is off, the rest goes in", async () => {
   const r = await kit(w, ["--yes"]);
   assert.equal(r.code, 0, r.text);
   assert.match(r.text, /Flat sidebar \(core\).*Off: no Herdr window is open/);
-  assert.ok(fs.existsSync(path.join(w.home, "mods", "prs", "main.js")));
+  assert.match(r.text, /PRs view \(prs\).*Off: needs the View bar piece/);
+  assert.ok(fs.existsSync(path.join(w.home, "mods", "repo-worktree")));
+  assert.ok(!fs.existsSync(path.join(w.home, "mods", "prs")));
   assert.ok(!fs.existsSync(path.join(w.home, "mods", "spaces-flat")));
 });

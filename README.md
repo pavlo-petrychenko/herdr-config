@@ -18,7 +18,7 @@ It checks your Herdr and your programs, lets you pick pieces, shows every change
 |---|---|---|
 | `core` | Flat sidebar (`spaces-flat`), sidebar groups, the agent queue, the usage bar, the `main-flat` layout | Herdr window open, Python 3 |
 | `viewbar` | The Agent / Plan / PRs bar under the tabs, the hotkeys map | `core` |
-| `prs` | The PRs view and the `herdr-prs` tool | Node 20+, `gh` logged in |
+| `prs` | The PRs view and the `herdr-prs` tool | `viewbar`, Node 20+, `gh` logged in |
 | `repo-worktree` | The worktrees popup (`cmd-shift-n`) | git |
 | `file-viewer` | The viewer pane and the `herdr-show` tool | nothing |
 | `statuses` | Claude Code hooks, the `herdr-status` tool, the status line | Claude Code (`jq` for the status line) |
