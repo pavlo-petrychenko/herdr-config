@@ -22,7 +22,7 @@ It prints nothing, except with `--print` (then the JSON, indented). It is safe t
 - `--session <id>` (repeatable): add a Claude Code session by id. For tests with a fake terminal.
 - `--cwd <path>`: use this folder as the terminal's worktree. Default: the terminal's live folder.
 - Run time: 1 to 2 s warm without `--discover`, 3 to 5 s with it. A run stops itself at 24 s (Herdr stops an `exec` at 30 s).
-- Run one at a time per terminal. Two runs at once are safe (every write is atomic) but waste calls.
+- Run one at a time per terminal: a run holds `<home>/data/prs/<terminal>.lock` (`{ pid, at }`). A run that finds a live lock (its process exists, under 60 s old) waits up to 15 s for it to go, then exits 0 without refreshing: the other run writes the file. A dead or older lock is taken over. (Writes are atomic anyway.)
 
 ### detail
 
@@ -169,6 +169,7 @@ A PR that was not created by a transcript but was found by searching for a pushe
 ## Files under `<home>/data/prs/`
 
 - `<terminal>.json`: the data file. Safe to delete; the next refresh makes it again.
+- `<terminal>.lock`: held while a refresh runs (see Commands). Safe to delete.
 - `cache/scan.json`: transcript scan results by file (plus folder → repo and repo → default branch lookups). Pruned after 45 days or above 6000 files.
 - `cache/discover/<terminal>.json`: searched branches, discovered PR numbers, native stack members.
 - `cache/detail/*.json`: `detail` answers.

@@ -7,7 +7,9 @@
 // It prints nothing on success (with --print: the JSON) and exits 0 even when parts failed: they are in
 // `errors`. detail prints JSON. Exit 2 is a usage error. The format is in FORMAT.md.
 import { PARTS, detail } from "./detail.mjs";
-import { refresh } from "./refresh.mjs";
+import { withLock, lockFile } from "./lock.mjs";
+import { dataFile, refresh } from "./refresh.mjs";
+import { appHome, readJson } from "./util.mjs";
 import { Deadline, makeRunner } from "./run.mjs";
 
 const USAGE = `usage:
@@ -41,8 +43,12 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       const { pos, flags } = parseArgs(rest, { discover: "bool", print: "bool", session: "list", cwd: "value" });
       if (pos.length !== 1) throw new UsageError("refresh needs one terminal id");
       if (!/^[\w.-]+$/.test(pos[0])) throw new UsageError(`bad terminal id: ${pos[0]}`);
-      const out = await refresh({ terminal: pos[0], discover: Boolean(flags.discover), sessionArgs: flags.session, cwdArg: flags.cwd ?? null, env });
-      if (flags.print) stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+      // One run per terminal at a time: a run that meets a live one waits for it and then leaves its file as is.
+      const locked = await withLock(lockFile(dataFile(appHome(env), pos[0])), () => refresh({ terminal: pos[0], discover: Boolean(flags.discover), sessionArgs: flags.session, cwdArg: flags.cwd ?? null, env }));
+      if (flags.print) {
+        const out = locked.ran ? locked.value : readJson(dataFile(appHome(env), pos[0]), null);
+        if (out) stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+      }
       return 0;
     }
     if (cmd === "detail") {

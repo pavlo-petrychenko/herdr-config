@@ -11,6 +11,7 @@ My Herdr customizations. This repo is the Herdr home, `~/.config/herdr-app`.
   - `viewbar`: the bar under the tabs (Agent | Plan flip, panels for the second view) and the hotkeys map
   - `agent-usage`: usage bar for Claude and OpenCode
   - `file-viewer`: viewer pane for `herdr-show`
+  - `prs`: the PRs view (stacks, checks, files, diffs) for the agent in the focused tab; it runs `herdr-prs`. Optional `mods/prs/config.json` `{ "cli": "/abs/path/to/herdr-prs" }` (not in git). Tests: `node --test mods/prs/test/`
   - `space-groups`: sidebar groups
   - `spaces-flat`: patched copy of the shipped `spaces` mod
 - `layouts/main-flat.json`: patched copy of the shipped `main` layout
