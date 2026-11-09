@@ -47,8 +47,10 @@ export function stackActive(tree, id = STACK) {
 /** Shown: in the layout and not hidden. */
 export const isOpen = (tree, id) => { const n = findNode(tree, id); return Boolean(n) && !n.hidden; };
 
-/** Whether this layout has the flip at all (the stack, with the plan side). */
-export const hasFlip = (tree) => findNode(tree, STACK) !== null;
+/** Whether this layout has the flip at all: the stack, with the plan side in it. A layout trimmed
+ *  for a person without the plan view keeps the stack but not the plan block; flipping to a side
+ *  that is not there would fail, so the flip, the Agent | Plan switch and cmd-shift-r do nothing then. */
+export const hasFlip = (tree) => (findNode(tree, STACK)?.children ?? []).some((c) => c?.id === PLAN_VIEW);
 
 // ---- panels ----------------------------------------------------------------------------------------
 //

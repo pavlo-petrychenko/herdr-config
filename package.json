@@ -1,0 +1,51 @@
+{
+  "name": "herdr-kit",
+  "version": "0.1.0",
+  "description": "Puts the herdr-config pieces (flat sidebar, agent queue, view bar, PRs view, worktrees popup, file viewer) into your Herdr, and takes them out again.",
+  "keywords": [
+    "herdr",
+    "herdr-layout",
+    "claude-code",
+    "agents"
+  ],
+  "homepage": "https://github.com/pavlo-petrychenko/herdr-config#readme",
+  "bugs": {
+    "url": "https://github.com/pavlo-petrychenko/herdr-config/issues"
+  },
+  "bin": {
+    "herdr-kit": "kit/cli.mjs"
+  },
+  "files": [
+    "README.md",
+    "LICENSE",
+    "preview.png",
+    "kit/",
+    "!kit/test/",
+    "!kit/dev/",
+    "mods/agent-queue/",
+    "mods/agent-usage/",
+    "mods/file-viewer/",
+    "mods/prs/",
+    "mods/repo-worktree/",
+    "mods/space-groups/",
+    "mods/viewbar/",
+    "!mods/*/test/",
+    "!mods/prs/config.json",
+    "!**/*.d.ts",
+    "spaces-flat-patch.py",
+    "extras/",
+    "!extras/**/test/",
+    "!extras/hrt/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test kit/test/ extras/prs/test/ extras/claude/hooks/test/ mods/*/test/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pavlo-petrychenko/herdr-config.git"
+  },
+  "license": "MIT"
+}

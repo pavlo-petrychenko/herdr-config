@@ -10,6 +10,9 @@
 //   herdr-status.mjs hook <event>           Claude Code hooks (stdin: the hook's JSON)
 //     SessionStart      a new session in this terminal: forget the last session's status
 //                       (not after a compaction: that is the same session)
+//                       Also prints hook JSON with additionalContext: the instruction to end each
+//                       turn with `herdr-status` (so no CLAUDE.md edit is needed), after a compaction
+//                       too; not with HERDR_STATUS_NO_CONTEXT=1 (when CLAUDE.md says it already).
 //                       Also appends {sessionId, transcriptPath, cwd, source, at} to
 //                       <home>/data/agent-sessions/<terminal>.jsonl (which session ran in which
 //                       terminal; files older than 30 days are pruned). Not after a compaction.
@@ -37,6 +40,22 @@ export const KINDS = {
   done: "finished; nothing needed, just so the person knows",
   waiting: "waits on something that is not the person (CI, a deploy, a background job)",
 };
+
+// What the agent is told at the start of a session (the owner's CLAUDE.md wording). "approve" is left
+// out: permission prompts and the question tool are seen without the agent.
+const CONTEXT_KINDS = {
+  answer: "you asked the person something or need a decision",
+  blocked: "you cannot go on: access, broken CI, a service down",
+  review: "finished work for the person to check",
+  done: "finished, nothing needed",
+  waiting: "waiting on CI, a deploy or a job, not on the person",
+};
+export const CONTEXT = [
+  "You run inside Herdr. End every turn that stops for the person (or finishes) with",
+  '`herdr-status <kind> "<one sentence>"`, run as your last command. Kinds: ',
+  Object.entries(CONTEXT_KINDS).map(([k, v]) => `${k} (${v})`).join(", ") + ".",
+  "The sentence says what the person must do, or what you did. Permission prompts and your question tool are detected without it; if you forget, a small model guesses the kind.",
+].join(" ").replace("Kinds:  ", "Kinds: ");
 
 const PLAN_WAITS = "Plan waits for your review";
 const terminal = process.env.HC_TERMINAL_ID;
@@ -124,7 +143,13 @@ function main(argv) {
     const input = stdin();
     if (arg === "SessionStart") {
       rememberSession(input);
-      return input.source === "compact" ? undefined : clear();
+      // After a compaction it is the same session: keep its status, but say the rule again
+      // (the summary may have dropped it).
+      if (input.source !== "compact") clear();
+      if (!process.env.HERDR_STATUS_NO_CONTEXT) {
+        console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: CONTEXT } }));
+      }
+      return;
     }
     if (arg === "SessionEnd" || arg === "UserPromptSubmit") return clear();
     if (arg === "PreToolUse") {

@@ -1,2 +1,16 @@
 #!/bin/sh
-exec node "$HOME/.claude/hooks/herdr-status.mjs" "$@"
+# herdr-status: the agent says what it needs from the person (see ../claude/hooks/herdr-status.mjs).
+#   herdr-status <kind> "<one sentence>"    herdr-status clear
+# The hook script sits next to this one: <dir>/bin/herdr-status and <dir>/claude/hooks/herdr-status.mjs.
+# The link in ~/.local/bin is followed to find <dir>. Without the sibling (an old install), the copy
+# in ~/.claude/hooks is used.
+self=$0
+while [ -L "$self" ]; do
+  dir=$(cd "$(dirname "$self")" && pwd)
+  link=$(readlink "$self")
+  case $link in /*) self=$link ;; *) self=$dir/$link ;; esac
+done
+here=$(cd "$(dirname "$self")" && pwd)
+script="$here/../claude/hooks/herdr-status.mjs"
+[ -f "$script" ] || script="$HOME/.claude/hooks/herdr-status.mjs"
+exec node "$script" "$@"

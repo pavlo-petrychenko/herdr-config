@@ -2,6 +2,9 @@
 /*
 !/.gitignore
 !/README.md
+!/RECIPE.md
+!/LICENSE
+!/preview.png
 !/install.sh
 !/extras/
 !/keys.json
@@ -10,6 +13,8 @@
 !/space-groups.json
 !/spaces-flat-patch.py
 !/spaces-flat-sync.sh
+!/package.json
+!/kit/
 
 !/layouts/
 /layouts/*
