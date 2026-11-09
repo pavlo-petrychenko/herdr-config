@@ -163,14 +163,28 @@
               "max": 900,
               "children": [
                 {
-                  "id": "side-view",
-                  "type": "block",
-                  "content": {
-                    "mod": "viewbar",
-                    "props": {
-                      "role": "side"
+                  "id": "side-stack",
+                  "type": "stack",
+                  "active": "side-view",
+                  "children": [
+                    {
+                      "id": "side-view",
+                      "type": "block",
+                      "content": {
+                        "mod": "viewbar",
+                        "props": {
+                          "role": "side"
+                        }
+                      }
+                    },
+                    {
+                      "id": "side-prs",
+                      "type": "block",
+                      "content": {
+                        "mod": "prs"
+                      }
                     }
-                  }
+                  ]
                 }
               ]
             },
