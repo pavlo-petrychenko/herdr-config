@@ -2,10 +2,23 @@
   "name": "herdr-kit",
   "version": "0.1.0",
   "description": "Puts the herdr-config pieces (flat sidebar, agent queue, view bar, PRs view, worktrees popup, file viewer) into your Herdr, and takes them out again.",
+  "keywords": [
+    "herdr",
+    "herdr-layout",
+    "claude-code",
+    "agents"
+  ],
+  "homepage": "https://github.com/pavlo-petrychenko/herdr-config#readme",
+  "bugs": {
+    "url": "https://github.com/pavlo-petrychenko/herdr-config/issues"
+  },
   "bin": {
     "herdr-kit": "kit/cli.mjs"
   },
   "files": [
+    "README.md",
+    "LICENSE",
+    "preview.png",
     "kit/",
     "!kit/test/",
     "!kit/dev/",

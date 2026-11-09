@@ -2,6 +2,9 @@
 /*
 !/.gitignore
 !/README.md
+!/RECIPE.md
+!/LICENSE
+!/preview.png
 !/install.sh
 !/extras/
 !/keys.json
