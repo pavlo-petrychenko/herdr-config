@@ -14,7 +14,7 @@ test("sessionFiles lists main, subagents, workflow agents; journal.jsonl is not 
   const kinds = files.map((f) => `${f.kind}:${path.basename(f.path)}`).sort();
   assert.deepEqual(kinds, [
     "main:11111111-aaaa-4bbb-8ccc-000000000001.jsonl",
-    "sub:agent-aaa111.jsonl", "sub:agent-bbb222.jsonl", "sub:agent-ddd444.jsonl", "sub:agent-eee555.jsonl", "sub:agent-ggg777.jsonl",
+    "sub:agent-aaa111.jsonl", "sub:agent-bbb222.jsonl", "sub:agent-ddd444.jsonl", "sub:agent-eee555.jsonl", "sub:agent-ggg777.jsonl", "sub:agent-hhh888.jsonl", "sub:agent-iii999.jsonl",
     "wf:agent-ccc333.jsonl", "wf:agent-fff666.jsonl",
   ]);
 });
@@ -31,6 +31,9 @@ test("scanSession: created PRs, pr-link, pushes, worktrees and who made them", a
     "104 workflow:absolute-imports", // the name comes from workflows/wf_123-abc.json
     "105 subagent:Result text only", // no toolUseResult: read from the text `gh pr create` printed
     "106 workflow:absolute-imports", // the same in a workflow agent (these never have a toolUseResult)
+    "201 subagent:Read old transcripts", // the scanner reports what the records say; the refresh weighs it
+    "204 subagent:Writer",
+    "205 subagent:Read old transcripts",
   ]);
   assert.equal(r.created.find((c) => c.n === 105).url, "https://github.com/acme/app/pull/105", "the last PR URL of the text");
   assert.equal(r.created.find((c) => c.n === 106).cwd, "/work/app/.claude/worktrees/wf_123-abc-2");
@@ -39,8 +42,15 @@ test("scanSession: created PRs, pr-link, pushes, worktrees and who made them", a
   assert.equal(r.created.find((c) => c.n === 101).url, "https://github.com/acme/app/pull/101");
   assert.equal(r.created.find((c) => c.n === 102).cwd, "/work/app/.claude/worktrees/agent-aaa111");
 
+  // Each claim keeps the times of the records that made it: 101 has its created record and 2 of its 3 pr-links
+  // at distinct times, in file order.
+  assert.deepEqual(r.created.find((c) => c.n === 101).ts, ["2026-11-01T10:00:00.000Z"]);
+  assert.deepEqual(r.created.find((c) => c.n === 201).ts, ["2026-11-01T10:03:00.000Z"]);
+  assert.deepEqual(r.links.find((l) => l.n === 101).ts, ["2026-11-01T10:00:01.000Z", "2026-11-01T10:05:01.000Z"]);
+  assert.deepEqual(r.links.find((l) => l.n === 201).ts, ["2026-11-01T10:06:00.000Z"]);
+
   // pr-link: de-duplicated, main transcript only.
-  assert.deepEqual(r.links.map((l) => `${l.repo}#${l.n}`).sort(), ["acme/app#101", "acme/app#102", "acme/app#110"]);
+  assert.deepEqual(r.links.map((l) => `${l.repo}#${l.n}`).sort(), ["acme/app#101", "acme/app#102", "acme/app#110", "acme/app#201", "acme/app#204", "acme/app#205", "acme/app#207"]);
 
   const pushes = r.pushes.map((p) => `${p.branch} ${p.by.kind}`).sort();
   assert.deepEqual(pushes, ["docs/readme subagent", "feat/main-work agent", "fix/parser subagent", "wf/imports workflow"]);
@@ -180,4 +190,26 @@ test("a cache written by an older scanner is dropped", () => {
   const c = new ScanCache(file);
   assert.deepEqual(c.files, {});
   assert.deepEqual(c.repos, { "/r": "o/r" }, "the folder lookups stay");
+});
+
+test("gh pr create: only a command that runs it, and only the URL on the last line", async () => {
+  const { runsGhCreate, createdUrl } = await import("../lib/transcripts.mjs");
+  assert.equal(runsGhCreate("gh pr create --fill"), true);
+  assert.equal(runsGhCreate("cd /w && gh pr create --title \"x\" --body 'y'"), true);
+  assert.equal(runsGhCreate("grep -rlF 'gh pr create' ~/.claude/projects"), false);
+  assert.equal(runsGhCreate("jq -r 'select(.cmd | test(\"gh pr create\"))' f.jsonl"), false);
+  assert.equal(runsGhCreate("rg \"gh pr create\" . | head"), false);
+  assert.equal(createdUrl("Creating pull request\nhttps://github.com/o/r/pull/12\n"), "https://github.com/o/r/pull/12");
+  assert.equal(createdUrl("found https://github.com/o/r/pull/12 in a log\nmore output"), null);
+  assert.equal(createdUrl("https://github.com/o/r/pull/12 and https://github.com/o/r/pull/13"), null);
+});
+
+test("record times: the first 8 distinct ones are kept, in file order; a record without a time adds none", () => {
+  const e = { prs: [], links: [], pushes: [], bad: 0, gh: { cmds: 0, ok: 0, err: 0, pending: [] } };
+  for (let i = 0; i < 20; i++) applyRecord({ type: "pr-link", prNumber: 5, prRepository: "o/r", timestamp: `2026-11-01T10:00:${String(i).padStart(2, "0")}.000Z` }, e);
+  applyRecord({ type: "pr-link", prNumber: 5, prRepository: "o/r", timestamp: "2026-11-01T10:00:03.000Z" }, e);
+  applyRecord({ type: "pr-link", prNumber: 6, prRepository: "o/r" }, e);
+  assert.equal(e.links.length, 2);
+  assert.deepEqual(e.links[0].ts, Array.from({ length: 8 }, (_, i) => `2026-11-01T10:00:0${i}.000Z`));
+  assert.deepEqual(e.links[1].ts, []);
 });

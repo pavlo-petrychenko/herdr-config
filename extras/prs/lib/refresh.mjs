@@ -14,15 +14,18 @@ import { findSessions } from "./sessions.mjs";
 import { scanSession } from "./transcripts.mjs";
 import { DEFAULT_BRANCHES, isPlaceholderBranch, makeGit } from "./git.mjs";
 import { MAX_ALIASES, fetchPrs, fetchStackEntries, searchQueries } from "./github.mjs";
-import { linkRows, mergeBy, reviveRow, summarize, toRow } from "./model.mjs";
+import { linkRows, mergeBy, reviveRow, summarize, toRow, withinCreation } from "./model.mjs";
 
 const MAX_STACK_EXTRA = 40; // PRs added to complete stacks and base chains, per repo
 const MAX_ERRORS = 30;
 const NO_STACK_MS = 60 * 60 * 1000; // after a "no stack fields" answer, do not ask again for an hour
+const MAX_REJECTED = 1000;
 const FULL_CHECK_MS = 60 * 60 * 1000; // merged and closed PRs are asked for again this often
 
 export const dataFile = (home, terminal) => path.join(home, "data/prs", `${safeName(terminal)}.json`);
 const discoverFile = (home, terminal) => path.join(cacheDir(home), "discover", `${safeName(terminal)}.json`);
+/** Key of a transcript claim judged not real: the session that made it and the PR it named. */
+const claimKey = (session, repo, number) => `${session}|${prKey(repo, number)}`;
 const ghStateFile = (home) => path.join(cacheDir(home), "gh.json");
 
 /**
@@ -88,30 +91,37 @@ async function refreshNow(opts) {
   const scans = await mapLimit(found.sessions, 2, async (s) => {
     try { return await scanSession(s.transcriptPath, cache, { now }); } catch (e) { fail("scan", `could not read ${s.transcriptPath}: ${e.message}`, { file: s.transcriptPath }); return null; }
   });
-  for (const sc of scans) {
-    if (!sc) continue;
-    ev.created.push(...sc.created); ev.links.push(...sc.links); ev.pushes.push(...sc.pushes); ev.worktrees.push(...sc.worktrees);
+  scans.forEach((sc, i) => {
+    if (!sc) return;
+    const session = found.sessions[i].sessionId;
+    ev.created.push(...sc.created.map((c) => ({ ...c, session }))); ev.links.push(...sc.links.map((l) => ({ ...l, session })));
+    ev.pushes.push(...sc.pushes); ev.worktrees.push(...sc.worktrees);
     if (sc.bad) { bad += sc.bad; badFiles++; }
     for (const f of sc.formatErrors) fail("transcript-format", f.message, { file: f.file });
-  }
+  });
   if (bad) fail("transcript-parse", `${bad} unparseable transcript line(s) skipped in ${badFiles} file(s)`);
 
   lap(`scanned: ${scans.filter(Boolean).reduce((n, x) => n + x.stats.scanned, 0)} file(s) read`);
   // PR numbers per repo, and who made each.
   const pathOfRepo = new Map(); // repo -> a folder of it that exists (for origin/HEAD)
   const repoOf = async (p) => { const repo = await git.repoOfPath(p); if (repo && !pathOfRepo.has(repo)) pathOfRepo.set(repo, p); return repo; };
-  const createdBy = new Map(); // repo#n -> by[]
-  const linked = new Set();
+  // What the transcripts claim about each PR: { kind: "created" | "link", by, ts (record times), session }.
+  // A claim is only believed once GitHub has said when the PR was made (see "who made each").
+  const claims = new Map(); // repo#n -> claim[]
   const known = new Map(); // repo -> Set(number)
   const know = (repo, n) => { if (!known.has(repo)) known.set(repo, new Set()); known.get(repo).add(n); };
+  const claim = (repo, n, c) => {
+    if (disc.rejected[claimKey(c.session, repo, n)]) return; // judged not real before: do not fetch it again
+    const k = prKey(repo, n);
+    if (!claims.has(k)) claims.set(k, []);
+    claims.get(k).push(c);
+    know(repo, n);
+  };
   for (const c of ev.created) {
     const repo = parsePrUrl(c.url)?.repo ?? (await repoOf(c.cwd));
-    if (!repo) continue;
-    const k = prKey(repo, c.n);
-    createdBy.set(k, mergeBy(createdBy.get(k), [c.by]));
-    know(repo, c.n);
+    if (repo) claim(repo, c.n, { kind: "created", by: c.by, ts: c.ts, session: c.session });
   }
-  for (const l of ev.links) { linked.add(prKey(l.repo, l.n)); know(l.repo, l.n); }
+  for (const l of ev.links) claim(l.repo, l.n, { kind: "link", by: { kind: "agent" }, ts: l.ts, session: l.session });
 
   // Branches: pushed by the agent, its subagents and workflows; their worktrees; the terminal's worktree.
   const branchBy = new Map(); // "repo|branch" -> by[]
@@ -191,15 +201,35 @@ async function refreshNow(opts) {
   lap("github done");
 
   // ---- who made each ------------------------------------------------------------------------------------------
+  // A "created" record or a pr-link counts only when it was written about when GitHub made the PR. Claude Code
+  // writes them as well when a tool result merely prints an old `gh pr create` or PR URL (a subagent that reads
+  // other transcripts), which would give this agent PRs it never made. A branch it pushed counts as before.
+  const rejectedNow = new Set();
   for (const row of rows) {
     const key = prKey(row.repo, row.number);
-    let by = createdBy.get(key);
-    if (!by) by = linked.has(key) ? [{ kind: "agent" }] : branchBy.get(`${row.repo}|${row.head}`) ?? [];
+    const all = claims.get(key) ?? [];
+    const real = all.filter((c) => withinCreation(row.createdAt, c.ts));
+    const realSessions = new Set(real.map((c) => c.session));
+    for (const c of all) if (!realSessions.has(c.session)) rejectedNow.add(claimKey(c.session, row.repo, row.number));
+    const created = real.filter((c) => c.kind === "created").map((c) => c.by);
+    let by = created;
+    if (!by.length) by = real.length ? [{ kind: "agent" }] : branchBy.get(`${row.repo}|${row.head}`) ?? [];
     if (worktree?.repo === row.repo && wtBranches.includes(row.head) && !DEFAULT_BRANCHES.has(row.head)) by = mergeBy(by, [{ kind: "worktree" }]);
-    row.by = by.length ? mergeBy(by) : [{ kind: "other" }];
+    row.by = mergeBy(by);
   }
   const linkedRows = linkRows(rows);
-  const { count, problems } = summarize(linkedRows);
+  // A PR nobody made is in the file only as a neighbour: in the stack or base chain of one that someone did.
+  const keptStacks = new Set(linkedRows.filter((r) => r.by.length && r.stack).map((r) => r.stack.id));
+  const dropped = new Set(); // repo#n
+  const droppedStacks = new Set();
+  const finalRows = [];
+  for (const r of linkedRows) {
+    if (r.by.length) finalRows.push(r);
+    else if (r.stack && keptStacks.has(r.stack.id)) { r.by = [{ kind: "other" }]; finalRows.push(r); }
+    else { dropped.add(prKey(r.repo, r.number)); if (r.stack) droppedStacks.add(r.stack.id); }
+  }
+  const { count, problems } = summarize(finalRows);
+  lap(`rows: ${finalRows.length}, dropped: ${dropped.size}, claims rejected: ${rejectedNow.size}`);
 
   // ---- save the lookups, write the file ----------------------------------------------------------------------
   if (full && !errors.some((e) => e.kind === "gh")) disc.fullAt = new Date(now()).toISOString();
@@ -214,6 +244,16 @@ async function refreshNow(opts) {
     if (r.discoveredNumbers?.length) disc.numbers[r.repo] = uniq([...(disc.numbers[r.repo] ?? []), ...r.discoveredNumbers]).sort((a, b) => a - b);
     for (const [id, s] of Object.entries(r.stacks ?? {})) disc.stacks[id] = s;
   }
+  // What was dropped is not looked up again: not its number, not its stack, not the claim that named it.
+  for (const repo of Object.keys(disc.numbers)) disc.numbers[repo] = disc.numbers[repo].filter((n) => !dropped.has(prKey(repo, n)));
+  for (const id of droppedStacks) delete disc.stacks[id];
+  for (const [id, st] of Object.entries(disc.stacks)) {
+    const repo = id.slice(0, id.lastIndexOf("#"));
+    if ((st.members ?? []).length && st.members.every((n) => dropped.has(prKey(repo, n)))) delete disc.stacks[id];
+  }
+  for (const k of rejectedNow) disc.rejected[k] = new Date(now()).toISOString();
+  const keepRejected = Object.entries(disc.rejected).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, MAX_REJECTED);
+  disc.rejected = Object.fromEntries(keepRejected);
   try { writeAtomic(discoverFile(home, terminal), JSON.stringify(disc)); } catch (e) { fail("cache", `could not save the discovery cache: ${e.message}`); }
   cache.save();
 
@@ -224,8 +264,8 @@ async function refreshNow(opts) {
     stale: staleParts,
     worktree,
     sessions: found.sessions.map(({ sessionId, transcriptPath, from }) => ({ sessionId, transcriptPath, from })),
-    repos: uniq([...linkedRows.map((r) => r.repo), ...(worktree?.repo ? [worktree.repo] : []), ...repos]).sort(),
-    prs: linkedRows,
+    repos: uniq([...finalRows.map((r) => r.repo), ...(worktree?.repo ? [worktree.repo] : []), ...branches.map((b) => b.repo)]).sort(),
+    prs: finalRows,
     count,
     problems,
     branches,
@@ -252,7 +292,7 @@ function dedupeErrors(errors) {
 function loadDiscover(home, terminal) {
   const raw = readJson(discoverFile(home, terminal), null);
   const ok = raw && raw.version === 1;
-  return { version: 1, at: ok ? raw.at ?? null : null, fullAt: ok ? raw.fullAt ?? null : null, searched: ok ? raw.searched ?? {} : {}, numbers: ok ? raw.numbers ?? {} : {}, stacks: ok ? raw.stacks ?? {} : {} };
+  return { version: 1, at: ok ? raw.at ?? null : null, fullAt: ok ? raw.fullAt ?? null : null, searched: ok ? raw.searched ?? {} : {}, numbers: ok ? raw.numbers ?? {} : {}, stacks: ok ? raw.stacks ?? {} : {}, rejected: ok ? raw.rejected ?? {} : {} };
 }
 
 /**
