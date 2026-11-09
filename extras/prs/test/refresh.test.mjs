@@ -432,3 +432,28 @@ test("with no createdAt to compare (a failed fetch kept the old row), claims are
   assert.deepEqual(nums(out), nums(good), "the same rows, 205 kept as a neighbour of 204, nothing resurrected");
   assert.deepEqual(byOf(out, 204), ["subagent:Writer"]);
 });
+
+test("a PR the main agent created while its cwd was in the worktree folder is the worktree's too; subagents' and pr-links are not", async () => {
+  const t = setup();
+  // The main transcript's records have cwd /work/app. Make that the terminal's folder (no branch: a coordinator checkout).
+  const out = await t.go({ discover: true, cwdArg: "/work/app" });
+  assert.deepEqual(out.worktree, { path: "/work/app", branch: null, repo: "acme/app" });
+  const withWt = out.prs.filter((p) => p.by.some((b) => b.kind === "worktree")).map((p) => p.number);
+  assert.deepEqual(withWt, [101], "only what the main agent's `created` records name");
+  assert.deepEqual(byOf(out, 101), ["worktree", "agent"]);
+  assert.deepEqual(byOf(out, 110), ["agent"], "a pr-link has no folder");
+  assert.deepEqual(byOf(out, 102), ["subagent:Fix the parser"], "a subagent worked elsewhere");
+  // A folder above or beside the records' cwd does not match.
+  const beside = await setup().go({ discover: true, cwdArg: "/work/app-wt" });
+  assert.equal(beside.prs.some((p) => p.by.some((b) => b.kind === "worktree" && p.number !== 101)), false);
+});
+
+test("insideFolder: the folder itself or below it, not a sibling with the same prefix", async () => {
+  const { insideFolder } = await import("../lib/refresh.mjs");
+  assert.equal(insideFolder("/a/b", "/a/b"), true);
+  assert.equal(insideFolder("/a/b/c/d", "/a/b/"), true);
+  assert.equal(insideFolder("/a/bc", "/a/b"), false);
+  assert.equal(insideFolder("/a", "/a/b"), false);
+  assert.equal(insideFolder(null, "/a/b"), false);
+  assert.equal(insideFolder("/a/b", ""), false);
+});

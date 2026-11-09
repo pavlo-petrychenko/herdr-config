@@ -338,3 +338,34 @@ test("anyPending looks at open and draft PRs only", () => {
   assert.equal(M.anyPending(FILE.prs), true);
   assert.equal(M.anyPending([]), false);
 });
+
+// ---- the scope the view opens on ----
+
+test("pickScope: Worktree only when it has an open or draft PR; else Agent, whatever was saved", () => {
+  const live = [pr(1, { by: [{ kind: "worktree" }, { kind: "agent" }] }), pr(2)];
+  const draft = [pr(1, { state: "draft", by: [{ kind: "worktree" }] })];
+  const doneOnly = [pr(1, { state: "merged", by: [{ kind: "worktree" }] }), pr(2, { state: "closed", by: [{ kind: "worktree" }, { kind: "agent" }] }), pr(3)];
+  assert.equal(M.pickScope(live, "worktree"), "worktree");
+  assert.equal(M.pickScope(draft, "worktree"), "worktree");
+  assert.equal(M.pickScope(live, "agent"), "agent", "the saved choice is Agent");
+  assert.equal(M.pickScope(live, undefined), "agent");
+  assert.equal(M.pickScope(doneOnly, "worktree"), "agent", "Worktree has only done PRs: empty");
+  assert.equal(M.pickScope([], "worktree"), "agent");
+  assert.equal(M.pickScope(FILE.prs, "worktree"), "agent", "the real file has no worktree PR");
+});
+
+test("an empty Worktree keeps its count and its done PRs behind the toggle", () => {
+  const prs = [pr(1, { state: "merged", by: [{ kind: "worktree" }, { kind: "agent" }] }), pr(2, { state: "closed", by: [{ kind: "worktree" }, { kind: "agent" }] }), pr(3)];
+  assert.equal(M.scopeCounts(prs).worktree, 0);
+  const g = M.groups(prs, { scope: "worktree" });
+  assert.deepEqual(M.listItems(g), []);
+  assert.equal(g.doneCount, 2);
+  assert.deepEqual(M.rowOrder(M.listItems(M.groups(prs, { scope: "worktree", showDone: true }))).sort(), ["acme/app#1", "acme/app#2"]);
+});
+
+test("worktreeEmptyText: the branch, or no worktree", () => {
+  assert.equal(M.worktreeEmptyText({ path: "/w", branch: "shop-feature", repo: "o/r" }), "No open PR for branch shop-feature");
+  assert.equal(M.worktreeEmptyText({ path: "/w", branch: null, repo: null }), "This agent's folder is not a git worktree");
+  assert.equal(M.worktreeEmptyText(null), "This agent's folder is not a git worktree");
+  assert.equal(M.worktreeEmptyText(FILE.worktree), "No open PR for branch shop-feature");
+});

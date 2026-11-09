@@ -125,7 +125,7 @@ A list of `{ "kind", "name"? }`, ordered `worktree`, `agent`, `subagent`, `workf
 | `agent` | The main transcript created the PR (`gitOperation` `created`), or has a `pr-link` for it and no subagent or workflow created it. |
 | `subagent` | A subagent's transcript created it. `name` is the agent's `name`, else its `description`, else its `agentType`. |
 | `workflow` | A workflow agent's transcript created it. `name` is the `workflowName`. |
-| `worktree` | The PR's `head` is the terminal worktree's branch (local name, or upstream name when set). Added to the others. |
+| `worktree` | The PR's `head` is the terminal worktree's branch (local name, or upstream name when set), or the main agent (kind `agent`, not a subagent or workflow) created it while the `cwd` of its `created` record was the worktree's folder or a folder below it (a coordinator opens no PR from its own branch). Added to the others. |
 | `other` | The PR is in the file only because of a stack or a base chain. Always alone. |
 
 A PR that was not created by a transcript but was found by searching for a pushed branch gets the `by` of whoever pushed that branch.
