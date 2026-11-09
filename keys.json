@@ -58,7 +58,8 @@
     "ctrl-8": "space.select:8",
     "ctrl-9": "space.select:9",
     "cmd-shift-n": "mod.open:repo-worktree",
-    "cmd-shift-r": "viewbar.flip"
+    "cmd-shift-r": "viewbar.flip",
+    "cmd-shift-g": "viewbar.prs"
   },
   "terminal": {
     "cmd-c": "terminal.copy",

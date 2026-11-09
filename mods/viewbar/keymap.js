@@ -31,7 +31,7 @@ const NAMES = {
   "layout.switch": "Next layout", "app.palette": "Command palette", "app.settings": "Settings", "app.help": "Help",
   "app.quit": "Quit", "app.hide": "Hide Herdr", "app.hide_others": "Hide others", "app.zoom_in": "Zoom in", "app.zoom_out": "Zoom out", "app.zoom_reset": "Actual size",
   "terminal.copy": "Copy", "terminal.paste": "Paste", "terminal.paste_image": "Paste image", "terminal.search": "Find",
-  "viewbar.flip": "Agent ⇄ plan", "viewbar.close": "Close pane", "viewbar.keys": "Keyboard shortcuts", "plan-review.flip": "Agent ⇄ plan", "plan-review.back": "Back to the agent",
+  "viewbar.flip": "Agent ⇄ plan", "viewbar.close": "Close pane", "viewbar.keys": "Keyboard shortcuts", "viewbar.prs": "Pull requests", "plan-review.flip": "Agent ⇄ plan", "plan-review.back": "Back to the agent",
 };
 const MOD_NAMES = { picker: "Go to anything", "repo-worktree": "New worktree", "agent-queue": "Agent queue", "viewbar": "Keyboard shortcuts" };
 const SECTION_NAMES = { "plan-review": "the plan view", "agent-queue": "the agent queue", files: "Files", changes: "Changes" };
@@ -48,6 +48,7 @@ export function describe(action, section = "global") {
   if (/^\d+$/.test(arg) && (name === "tab.select" || name === "space.select")) return { group: head === "tab" ? "Tabs" : "Spaces", label: `${NAMES[name]} ${arg}`, base: name, n: Number(arg) };
   if (name === "mod.open") return { group: "Open", label: MOD_NAMES[arg] ?? cap(arg.replace(/-/g, " ")) };
   if (name === "viewbar.close") return { group: "Panes", label: NAMES[name] };
+  if (name === "viewbar.prs") return { group: "Agents & plans", label: NAMES[name] };
   if (name === "pane.split") return { group: "Panes", label: `Split ${arg || "right"}` };
   if (name === "pane.go" || name === "pane.swap") return { group: "Panes", label: `${name === "pane.go" ? "Focus" : "Swap"} pane ${arg}`, base: name, dir: arg };
   if (name === "layout.toggle") return { group: "Window", label: `Show/hide ${arg}` };
@@ -57,7 +58,7 @@ export function describe(action, section = "global") {
 }
 
 // Rows in a group follow this (then the order keys() gives).
-const ACTIONS = ["viewbar.flip", "viewbar.close", "plan-review.flip", "plan-review.back", "agent.next", "agent.prev",
+const ACTIONS = ["viewbar.flip", "viewbar.prs", "viewbar.close", "plan-review.flip", "plan-review.back", "agent.next", "agent.prev",
   "tab.new", "tab.close", "tab.next", "tab.prev", "tab.select", "tab.rename",
   "space.new", "space.next", "space.prev", "space.select", "space.rename",
   "pane.split", "pane.go", "pane.swap", "pane.zoom", "pane.close", "mod.open",

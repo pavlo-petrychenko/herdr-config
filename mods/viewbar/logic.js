@@ -53,11 +53,13 @@ export const hasFlip = (tree) => findNode(tree, STACK) !== null;
 // ---- panels ----------------------------------------------------------------------------------------
 //
 // A provider is one kind of panel for the second view (providers.js):
-//   { kind, title, icon, init?(cx), available(ctx), body(ctx, t, kit) }
+//   { kind, title, icon, child?, focus?, init?(cx), available(ctx), body(ctx, t, kit) }
 //   kind        a short id: the layout never needs it; `viewbar.<kind>` in keys.json toggles it
 //   title       the panel's heading; icon  an svg path under mods/viewbar/
 //   init(cx)    optional, once per bar copy: start reading the provider's data (cx.notify() to redraw)
-//   available   (ctx) -> { badge: { text, tone }, tip } when the agent HAS this thing, else null
+//   child       the provider's own block in the side column's stack "side-stack" (a mod that draws the panel);
+//               without it the bar's own side view draws `body`. focus: the mod's command that takes the keyboard
+//   available   (ctx) -> { badge?: { text, tone }, tip } when the agent HAS this thing, else null (no badge: nothing drawn)
 //   body        (ctx, t, kit) -> an array of elements, the panel's content; kit = { div, svg, h_flex, v_flex }
 // ctx = { agent, terminal, tab, space }: the agent the bar is about.
 
