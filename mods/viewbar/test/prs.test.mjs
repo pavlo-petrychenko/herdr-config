@@ -7,13 +7,13 @@ import { describe } from "../keymap.js";
 const file = (o) => JSON.stringify({ version: 1, at: "2026-11-09T10:00:00Z", count: 2, problems: 0, prs: [], ...o });
 
 test("data file: count, problems and time; anything else is no data", () => {
-  assert.deepEqual(parseData(file({ count: 3, problems: 1 })), { count: 3, problems: 1, at: "2026-11-09T10:00:00Z" });
+  assert.deepEqual(parseData(file({ count: 3, problems: 1 })), { count: 3, total: 3, problems: 1, at: "2026-11-09T10:00:00Z" });
   assert.equal(parseData(null), null, "missing file");
   assert.equal(parseData(""), null);
   assert.equal(parseData("{not json"), null);
   assert.equal(parseData("[]"), null);
   assert.equal(parseData(file({ version: 2 })), null, "another format version is ignored");
-  assert.deepEqual(parseData(JSON.stringify({ version: 1 })), { count: 0, problems: 0, at: null }, "missing numbers are 0");
+  assert.deepEqual(parseData(JSON.stringify({ version: 1 })), { count: 0, total: 0, problems: 0, at: null }, "missing numbers are 0");
   assert.equal(parseData(file({ count: "x", problems: -1 })).count, 0);
   assert.equal(parseData(file({ problems: -1 })).problems, 0);
 });
@@ -75,4 +75,17 @@ test("refresh: discover only when the last one is more than 5 minutes old, or ne
 
 test("keys: viewbar.prs is a named action", () => {
   assert.deepEqual(describe("viewbar.prs"), { group: "Agents & plans", label: "Pull requests" });
+});
+
+test("merged and closed PRs alone still give the button; stack-only PRs do not", () => {
+  const prs = [
+    { number: 1, state: "merged", by: [{ kind: "agent" }] },
+    { number: 2, state: "closed", by: [{ kind: "subagent", name: "x" }] },
+    { number: 3, state: "merged", by: [{ kind: "other" }] },
+  ];
+  const d = parseData(file({ count: 0, problems: 0, prs }));
+  assert.equal(d.total, 2);
+  assert.deepEqual(prsBadge(d), { tip: "Pull requests · 0 open · 2 done" });
+  assert.equal(prsBadge(parseData(file({ count: 0, prs: [prs[2]] }))), null, "only another PR's stack: no button");
+  assert.deepEqual(prsBadge({ count: 1, total: 7, problems: 0 }), { tip: "Pull requests · 1 open · 6 done" });
 });
