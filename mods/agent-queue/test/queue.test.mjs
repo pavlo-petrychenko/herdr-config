@@ -123,6 +123,16 @@ test("planChip: the plan's state sets label and colour; no plan, no chip", () =>
   assert.equal(planChip({ status: "weird" }), null);
 });
 
+test("planChip: an approved plan's chip goes away 10 minutes after the approval", () => {
+  const at = Date.parse("2026-11-10T09:00:00Z");
+  const ptr = (status) => ({ reviewId: "r", projectKey: "p", version: 1, status, title: "x", updatedAt: "2026-11-10T09:00:00Z" });
+  assert.equal(planChip(ptr("approved"), at + 9 * 60 * 1000).label, "APPROVED");
+  assert.equal(planChip(ptr("approved"), at + 10 * 60 * 1000), null);
+  assert.equal(planChip(ptr("pending"), at + 60 * 60 * 1000).label, "PLAN");
+  assert.equal(planChip(ptr("rejected"), at + 60 * 60 * 1000).label, "CHANGES");
+  assert.equal(planChip({ ...ptr("approved"), updatedAt: "" }, at + 60 * 60 * 1000).label, "APPROVED");
+});
+
 test("a row carries its tab, so its plan can be found", () => {
   const q = buildQueue([agent("t1", "idle", "A", { tab: "tab7" })], [], new Map(), new Map());
   assert.equal(q[0].items[0].tabId, "tab7");

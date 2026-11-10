@@ -185,10 +185,21 @@ export function parseDeclared(stdout) {
 // An agent whose plan was submitted to agent-plan-review (pointers.js) gets a chip on its row. Its
 // colour is the plan's state; a click goes to the agent and shows its plan (the view bar's flip).
 
-/** The chip for a plan pointer: { label, color (theme name), tip }, or null without a plan. */
-export function planChip(pointer) {
+/** An approved plan's chip goes away this long after the approval: after that it is only noise. */
+export const APPROVED_CHIP_MS = 10 * 60 * 1000;
+
+/**
+ * The chip for a plan pointer: { label, color (theme name), tip }, or null without a plan.
+ * An approved plan has no chip once APPROVED_CHIP_MS passed since its updatedAt (the decision);
+ * without a readable time the chip stays. The view bar still opens the plan.
+ */
+export function planChip(pointer, nowMs = Date.now()) {
   const st = pointer && STATES[pointer.status];
   if (!st) return null;
+  if (pointer.status === "approved") {
+    const at = Date.parse(pointer.updatedAt ?? "");
+    if (Number.isFinite(at) && nowMs - at >= APPROVED_CHIP_MS) return null;
+  }
   return { label: st.short.toUpperCase(), color: st.color, tip: `Plan ${st.label}${pointer.title ? ` · ${pointer.title}` : ""} · click to open` };
 }
 
